@@ -1,0 +1,30 @@
+<!--
+  Paste these <key>/<string> pairs into ios/App/App/Info.plist between
+  the existing top-level <dict>…</dict> tags.  Without all four iOS will
+  silently refuse camera / mic / speech / LAN MQTT.
+-->
+<key>NSCameraUsageDescription</key>
+<string>Used to mirror your facial expressions onto the virtual librarian.</string>
+
+<key>NSMicrophoneUsageDescription</key>
+<string>Used to detect ambient noise and recognise spoken topics for book recommendations.</string>
+
+<key>NSSpeechRecognitionUsageDescription</key>
+<string>Used to transcribe what you say so the librarian can suggest a relevant book.</string>
+
+<key>NSLocalNetworkUsageDescription</key>
+<string>Used to read environment sensors (temperature, light, motion) published by the Arduino on the same Wi-Fi.</string>
+
+<!-- Allow plain ws:// to the Mac on the LAN (Mosquitto WebSocket listener) -->
+<key>NSAppTransportSecurity</key>
+<dict>
+  <key>NSAllowsLocalNetworking</key>
+  <true/>
+</dict>
+
+<!-- Lock the app to landscape so the Pepper's-Ghost pyramid sits flat. -->
+<key>UISupportedInterfaceOrientations~ipad</key>
+<array>
+  <string>UIInterfaceOrientationLandscapeLeft</string>
+  <string>UIInterfaceOrientationLandscapeRight</string>
+</array>

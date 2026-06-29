@@ -1,0 +1,654 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>Holographic Virtual Librarian</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --fg: #e8e8e8;
+      --accent: #7be0c9;
+    }
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: #000;
+      color: var(--fg);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      overflow: hidden;
+      height: 100%;
+      width: 100%;
+      -webkit-tap-highlight-color: transparent;
+    }
+    #app { position: fixed; inset: 0; }
+    /* Pepper's-ghost canvas confined to a square on the LEFT of the iPad.
+       Size/position are CSS vars set by the calibration script below
+       (default: square the height of the screen, flush left, vertically
+       centred). pyramid.js auto-fits its 4-view cross to this square. */
+    #pyramid-canvas {
+      position: absolute;
+      top:  var(--pyr-top, 0px);
+      left: var(--pyr-left, 0px);
+      width:  var(--pyr-size, 100vmin);
+      height: var(--pyr-size, 100vmin);
+      background: #000;
+      display: block;
+    }
+    .panel {
+      position: fixed;
+      z-index: 10;
+      background: rgba(0, 0, 0, 0.65);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      padding: 12px 14px;
+      border-radius: 10px;
+      font-size: 13px;
+      line-height: 1.4;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    #hud { top: 12px; left: 12px; min-width: 200px; }
+    #controls { top: 12px; right: 12px; }
+    /* Developer chrome — hidden by default to give the build an "app" feel.
+       Append ?debug=1 to the URL (or set localStorage.debugOn = 1) to show. */
+    #hud, #controls { display: none; }
+    body.debug-on #hud,
+    body.debug-on #controls { display: block; }
+    #preview {
+      position: fixed; bottom: 12px; left: 12px; z-index: 10;
+      width: 160px; height: 120px;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 8px;
+      background: #111;
+      object-fit: cover;
+      transform: scaleX(-1); /* mirror selfie preview */
+    }
+    button, select {
+      background: #1d1d1d;
+      color: var(--fg);
+      border: 1px solid #333;
+      border-radius: 6px;
+      padding: 6px 10px;
+      font: inherit;
+      cursor: pointer;
+    }
+    button:hover { background: #292929; }
+    .row { display: flex; align-items: center; gap: 8px; margin: 4px 0; }
+    .ok { color: var(--accent); }
+    .warn { color: #f5b169; }
+    .err { color: #ff6b6b; }
+    .hide { display: none !important; }
+    /* Display-only mode (iPad): hide everything except the canvas */
+    body.display-mode .panel,
+    body.display-mode #preview { display: none; }
+    /* Sensor dashboard — right edge, outside the pyramid footprint.
+       Shown only when ?sensors=1 / ?sensors=mock is in the URL. */
+    #dashboard-canvas {
+      position: fixed;
+      right: 12px; top: 12px;
+      width: 280px;
+      height: calc(100% - 24px);
+      z-index: 9;
+      background: rgba(0, 0, 0, 0.55);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 10px;
+      display: none;
+    }
+    body.sensors-on #dashboard-canvas { display: block; }
+    body.display-mode #dashboard-canvas { display: none; }
+
+    /* ───── Mode selector (top-centre capsule) ───── */
+    #mode-selector {
+      position: fixed;
+      top: 14px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 12;
+      display: flex;
+      gap: 3px;
+      background: rgba(0, 0, 0, 0.65);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      padding: 4px;
+      border-radius: 999px;
+      border: 1px solid rgba(255, 255, 255, 0.10);
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+    }
+    .mode-btn {
+      padding: 9px 18px;
+      border: none;
+      border-radius: 999px;
+      background: transparent;
+      color: #999;
+      font: 600 13px -apple-system, BlinkMacSystemFont, sans-serif;
+      cursor: pointer;
+      transition: background 150ms, color 150ms, transform 100ms;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .mode-btn:not(.active):hover,
+    .mode-btn:not(.active):active {
+      background: rgba(255, 255, 255, 0.07);
+      color: #e8e8e8;
+    }
+    .mode-btn.active {
+      background: var(--accent);
+      color: #001a14;
+    }
+    .mode-btn .icon {
+      font-size: 15px;
+      line-height: 1;
+    }
+    body.display-mode #mode-selector { display: none; }
+
+    /* ───── Mood badge floating just under the mode selector ───── */
+    #mood-badge {
+      position: fixed;
+      top: 70px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 11;
+      background: rgba(0, 0, 0, 0.55);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      padding: 6px 14px;
+      border-radius: 999px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      font: 500 12px -apple-system, sans-serif;
+      color: #e8e8e8;
+      display: none;
+      align-items: center;
+      gap: 6px;
+      pointer-events: none;
+      transition: opacity 200ms;
+    }
+    body.feature-listen #mood-badge,
+    body.feature-both   #mood-badge { display: flex; }
+    body.display-mode   #mood-badge { display: none; }
+    #mood-badge .dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 0 0 rgba(123, 224, 201, 0.6);
+    }
+    #mood-badge .dot.pulse {
+      animation: dot-pulse 1.4s ease-out infinite;
+    }
+    @keyframes dot-pulse {
+      0%   { box-shadow: 0 0 0 0    rgba(123, 224, 201, 0.55); }
+      70%  { box-shadow: 0 0 0 10px rgba(123, 224, 201, 0);    }
+      100% { box-shadow: 0 0 0 0    rgba(123, 224, 201, 0);    }
+    }
+
+    /* In Listen mode, hide camera preview since face tracking is off. */
+    body.feature-listen #preview { display: none; }
+
+    /* ───── App-style title bar (top-left brand mark) ───── */
+    #brand {
+      position: fixed;
+      top: 22px; left: 22px;
+      z-index: 11;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: rgba(232, 232, 232, 0.85);
+      font: 600 14px -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif;
+      letter-spacing: 0.02em;
+      pointer-events: none;
+      user-select: none;
+    }
+    #brand .glyph {
+      width: 26px; height: 26px;
+      border-radius: 7px;
+      background: linear-gradient(135deg, var(--accent) 0%, #4cb3a0 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #001a14;
+      font-size: 15px;
+      font-weight: 700;
+    }
+    #brand .sub {
+      color: rgba(232, 232, 232, 0.45);
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+    body.display-mode #brand { display: none; }
+
+    /* ───── Status pill (lower-left corner, replaces debug HUD) ───── */
+    #app-status {
+      position: fixed;
+      bottom: 16px; left: 22px;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 12px;
+      border-radius: 999px;
+      background: rgba(0, 0, 0, 0.55);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      color: rgba(232, 232, 232, 0.85);
+      font: 500 12px -apple-system, sans-serif;
+      pointer-events: none;
+    }
+    #app-status .dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 8px rgba(123, 224, 201, 0.6);
+    }
+    #app-status.warn .dot { background: #f5b169; box-shadow: 0 0 8px rgba(245, 177, 105, 0.6); }
+    #app-status.err  .dot { background: #ff6b6b; box-shadow: 0 0 8px rgba(255, 107, 107, 0.6); }
+    body.display-mode #app-status { display: none; }
+
+    /* ───── Polished Settings modal (override the earlier rough styles) ───── */
+    #settings-modal .card {
+      background: linear-gradient(180deg, #181818 0%, #0e0e0e 100%);
+      box-shadow: 0 24px 80px rgba(0, 0, 0, 0.5), 0 1px 0 rgba(255,255,255,0.04) inset;
+      width: min(460px, 92vw);
+      padding: 26px 26px 22px;
+    }
+    #settings-modal h3 {
+      font-size: 17px;
+      margin-bottom: 4px;
+      color: #fff;
+    }
+    #settings-modal .subtitle {
+      margin: 0 0 18px;
+      font-size: 12px;
+      color: rgba(232, 232, 232, 0.5);
+    }
+    #settings-modal label {
+      margin-top: 14px;
+      color: rgba(232, 232, 232, 0.55);
+      font-size: 10.5px;
+      letter-spacing: 0.07em;
+    }
+    #settings-modal input,
+    #settings-modal select {
+      padding: 11px 13px;
+      background: #1a1a1a;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 9px;
+      color: #fff;
+    }
+    #settings-modal input:focus,
+    #settings-modal select:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(123, 224, 201, 0.15);
+    }
+    #settings-modal .actions button {
+      padding: 9px 18px;
+      border-radius: 9px;
+      font-weight: 600;
+    }
+    #settings-modal .actions #set-cancel {
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      color: rgba(232, 232, 232, 0.7);
+    }
+    #settings-modal .actions #set-save {
+      background: var(--accent);
+      color: #001a14;
+      border: none;
+      box-shadow: 0 4px 18px rgba(123, 224, 201, 0.25);
+    }
+    #settings-modal .actions #set-save:hover {
+      filter: brightness(1.05);
+    }
+
+    /* Pretty up the gear button as well — slightly larger, with hover */
+    #settings-btn {
+      width: 44px; height: 44px;
+      font-size: 19px;
+      transition: background 150ms, transform 100ms;
+    }
+    #settings-btn:hover {
+      background: rgba(255, 255, 255, 0.08);
+      transform: rotate(20deg);
+    }
+
+    /* ───── Settings gear (top-right) + modal ───── */
+    #settings-btn {
+      position: fixed;
+      top: 14px; right: 12px;
+      z-index: 12;
+      width: 40px; height: 40px;
+      border-radius: 50%;
+      border: 1px solid rgba(255, 255, 255, 0.10);
+      background: rgba(0, 0, 0, 0.65);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      color: #e8e8e8;
+      cursor: pointer;
+      font-size: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    body.display-mode #settings-btn { display: none; }
+    #settings-modal {
+      position: fixed; inset: 0;
+      z-index: 14;
+      background: rgba(0, 0, 0, 0.7);
+      display: none;
+      align-items: center;
+      justify-content: center;
+    }
+    #settings-modal.open { display: flex; }
+    #settings-modal .card {
+      background: #111; color: #e8e8e8;
+      border: 1px solid rgba(255, 255, 255, 0.10);
+      border-radius: 14px;
+      padding: 20px 22px;
+      width: min(440px, 90vw);
+      font: 13px/1.4 -apple-system, sans-serif;
+    }
+    #settings-modal h3 {
+      margin: 0 0 14px; font-size: 16px; color: var(--accent);
+    }
+    #settings-modal label {
+      display: block; margin: 12px 0 4px; color: #999; font-size: 11px;
+      text-transform: uppercase; letter-spacing: 0.05em;
+    }
+    #settings-modal input {
+      width: 100%; box-sizing: border-box;
+      padding: 10px 12px; font: inherit;
+      background: #1d1d1d; color: var(--fg);
+      border: 1px solid #333; border-radius: 8px;
+    }
+    #settings-modal .actions {
+      display: flex; gap: 8px; justify-content: flex-end; margin-top: 18px;
+    }
+
+    /* ───── "Book scanned" popup (fires when RC522 detects a book) ───── */
+    #book-popup {
+      position: fixed; inset: 0; z-index: 25;
+      display: none; align-items: center; justify-content: center;
+      pointer-events: none;
+    }
+    #book-popup.show { display: flex; }
+    #book-popup .bp-card {
+      position: relative; overflow: hidden;
+      min-width: 260px; max-width: 64vw;
+      padding: 26px 34px 28px; text-align: center;
+      background: linear-gradient(180deg, rgba(18,26,24,.97), rgba(8,12,11,.97));
+      border: 1px solid rgba(123,224,201,.45);
+      border-radius: 20px;
+      box-shadow: 0 24px 90px rgba(0,0,0,.6), 0 0 50px rgba(123,224,201,.18);
+      transform: scale(.82); opacity: 0;
+      animation: bp-in .5s cubic-bezier(.2,.9,.25,1.25) forwards;
+    }
+    #book-popup.hiding .bp-card { animation: bp-out .32s ease forwards; }
+    @keyframes bp-in  { to { transform: scale(1);   opacity: 1; } }
+    @keyframes bp-out { to { transform: scale(.92); opacity: 0; } }
+    #book-popup .bp-scan {
+      position: absolute; left: 6%; right: 6%; top: 0; height: 3px; border-radius: 3px;
+      background: linear-gradient(90deg, transparent, var(--accent), transparent);
+      box-shadow: 0 0 14px var(--accent);
+      animation: bp-scan 1.15s ease-in-out 2;
+    }
+    @keyframes bp-scan { 0%{top:0;opacity:0} 12%{opacity:1} 50%{top:100%} 88%{opacity:1} 100%{top:0;opacity:0} }
+    #book-popup .bp-check {
+      width: 48px; height: 48px; margin: 2px auto 14px; border-radius: 50%;
+      background: var(--accent); color: #001a14;
+      font: 800 26px/48px -apple-system, sans-serif;
+      box-shadow: 0 0 24px rgba(123,224,201,.55);
+    }
+    #book-popup .bp-label {
+      font: 700 11px -apple-system, sans-serif; letter-spacing: .24em;
+      color: var(--accent); margin-bottom: 10px;
+    }
+    #book-popup .bp-title  { font: 700 26px -apple-system, sans-serif; color: #fff; line-height: 1.18; }
+    #book-popup .bp-author { margin-top: 7px; font: 500 14px -apple-system, sans-serif; color: rgba(232,232,232,.6); }
+    #book-popup .bp-film   { margin-top: 16px; font: 600 13px -apple-system, sans-serif; color: var(--accent); }
+    #book-popup .bp-film:empty { display: none; }
+
+    /* ───── Push-to-talk button (offline Vosk speech) ───── */
+    #ptt-btn {
+      position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+      z-index: 13;
+      display: none; align-items: center; gap: 9px;
+      padding: 13px 24px; border-radius: 999px;
+      background: rgba(0, 0, 0, 0.62); color: #e8e8e8;
+      border: 1px solid rgba(123, 224, 201, 0.35);
+      backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+      font: 600 14px -apple-system, BlinkMacSystemFont, sans-serif;
+      -webkit-tap-highlight-color: transparent; user-select: none;
+      pointer-events: none;   /* status pill only — speech runs continuously, hands-free */
+      transition: transform .12s ease, background .15s, border-color .15s, box-shadow .15s;
+    }
+    body.ptt-on #ptt-btn { display: inline-flex; }
+    body.display-mode #ptt-btn { display: none; }
+    #ptt-btn .ptt-ic { font-size: 16px; line-height: 1; }
+    #ptt-btn.live {
+      background: var(--accent); color: #001a14; border-color: var(--accent);
+      transform: translateX(-50%) scale(1.06);
+      box-shadow: 0 0 30px rgba(123, 224, 201, 0.5);
+    }
+    #ptt-btn.loading { opacity: .65; }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <canvas id="pyramid-canvas"></canvas>
+    <canvas id="dashboard-canvas"></canvas>
+    <video id="preview" autoplay muted playsinline></video>
+
+    <!-- "Book scanned" popup — shown when the RC522 (field-loading) detects a book -->
+    <div id="book-popup" aria-hidden="true">
+      <div class="bp-card">
+        <div class="bp-scan"></div>
+        <div class="bp-check">✓</div>
+        <div class="bp-label">BOOK SCANNED</div>
+        <div class="bp-title"  id="bp-title">—</div>
+        <div class="bp-author" id="bp-author"></div>
+        <div class="bp-film"   id="bp-film"></div>
+      </div>
+    </div>
+
+    <!-- Push-to-talk: hold, say a topic (offline Vosk) → biases the film -->
+    <button id="ptt-btn" aria-label="Speech status" tabindex="-1">
+      <span class="ptt-ic">🎤</span><span id="ptt-label">Starting…</span>
+    </button>
+
+    <!-- App-style title bar -->
+    <div id="brand" aria-hidden="true">
+      <div class="glyph">VL</div>
+      <div>
+        <div>Virtual Librarian</div>
+        <div class="sub">Holographic · UCL CASA</div>
+      </div>
+    </div>
+
+    <!-- Compact status pill (replaces the debug HUD in app mode) -->
+    <div id="app-status">
+      <span class="dot"></span>
+      <span id="app-status-text">Starting…</span>
+    </div>
+
+    <!-- Mode switcher: which inputs drive the avatar -->
+    <div id="mode-selector" role="tablist" aria-label="Interaction mode">
+      <button class="mode-btn" data-mode="mirror" aria-label="Mirror mode">
+        <span class="icon">👤</span><span>Mirror</span>
+      </button>
+      <button class="mode-btn" data-mode="listen" aria-label="Listen mode">
+        <span class="icon">🎤</span><span>Listen</span>
+      </button>
+      <button class="mode-btn active" data-mode="both" aria-label="Both — mirror plus listen">
+        <span class="icon">✨</span><span>Both</span>
+      </button>
+    </div>
+
+    <!-- Mood badge that appears in Listen / Both modes -->
+    <div id="mood-badge">
+      <span class="dot" id="mood-dot"></span>
+      <span id="mood-text">Listening…</span>
+    </div>
+
+    <!-- Settings (gear) — Arduino IP, defaults -->
+    <button id="settings-btn" aria-label="Settings">⚙︎</button>
+    <div id="settings-modal" role="dialog" aria-modal="true">
+      <div class="card">
+        <h3>Settings</h3>
+        <p class="subtitle">Configure the Arduino sensor node and pick a default avatar. These are remembered across launches.</p>
+        <label for="set-arduino-host">Arduino IP (sensor node: ToF + temp + RFID)</label>
+        <input id="set-arduino-host" type="text" inputmode="decimal" placeholder="192.168.4.1 (AP) or your LAN IP" />
+        <div style="display:flex;gap:8px;align-items:center;margin-top:6px;">
+          <button id="set-test-arduino" type="button" style="padding:8px 14px;background:#1d1d1d;color:#e8e8e8;border:1px solid #333;border-radius:8px;font-size:12px;">Test Arduino</button>
+          <span id="set-test-result" style="font-size:11px;color:#777;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;"></span>
+        </div>
+        <div style="margin-top:4px;font-size:11px;color:#777;line-height:1.4">
+          Leave blank to use synthetic mock data for UI testing.<br>
+          AP-mode default: 192.168.4.1 (join the "VirtualLibrarian" Wi-Fi).
+        </div>
+        <label for="set-features">Default mode</label>
+        <select id="set-features" style="width:100%;padding:10px 12px;background:#1d1d1d;color:#e8e8e8;border:1px solid #333;border-radius:8px;">
+          <option value="both">Both — Mirror + Listen</option>
+          <option value="mirror">Mirror — face only</option>
+          <option value="listen">Listen — voice only</option>
+        </select>
+        <label for="set-lang">Speech recognition language</label>
+        <select id="set-lang" style="width:100%;padding:10px 12px;background:#1d1d1d;color:#e8e8e8;border:1px solid #333;border-radius:8px;">
+          <option value="en-US">English (US)</option>
+          <option value="en-GB">English (UK)</option>
+          <option value="zh-CN">中文 (普通话, testing only)</option>
+        </select>
+        <div style="margin-top:4px;font-size:11px;color:#777;line-height:1.4">
+          Recommendations and avatar moods are always rendered in English.
+          Choose Chinese only when you want to test with Mandarin speech.
+        </div>
+        <label for="set-avatar-url">Default avatar URL (optional)</label>
+        <input id="set-avatar-url" type="text" placeholder="/3D_/ryu2.vrm" />
+        <div class="actions">
+          <button id="set-cancel">Cancel</button>
+          <button id="set-save" style="background:var(--accent);color:#001a14;border:none;">Save &amp; reload</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="hud" class="panel">
+      <div><strong>Holographic Virtual Librarian</strong></div>
+      <div class="row">Mode: <span id="mode-label">capture</span></div>
+      <div class="row">FPS: <span id="fps">--</span></div>
+      <div class="row">Latency: <span id="latency">--</span> ms</div>
+      <div class="row">Status: <span id="status" class="warn">starting…</span></div>
+      <div class="row" style="font-size:11px;opacity:.7">URL: <code>?mode=capture|display|demo</code></div>
+    </div>
+
+    <div id="controls" class="panel">
+      <div class="row">
+        <label>Tracker:</label>
+        <select id="tracker">
+          <option value="face" selected>Face only</option>
+          <option value="pose">Body only</option>
+          <option value="holistic">Face + Body</option>
+        </select>
+      </div>
+      <div class="row">
+        <label>Layout:</label>
+        <select id="layout">
+          <option value="single" selected>Single (centre)</option>
+          <option value="pyramid">4-view pyramid</option>
+        </select>
+      </div>
+      <div class="row">
+        <label>Avatar:</label>
+        <select id="avatar">
+          <option value="placeholder">Placeholder head</option>
+          <option value="vrm-sample">Sample VRM (online)</option>
+          <option value="custom">Custom (drop GLB/VRM)</option>
+        </select>
+      </div>
+      <div class="row">
+        <input type="file" id="avatar-file" accept=".vrm,.glb" style="font-size:11px;" />
+      </div>
+      <div class="row">
+        <button id="fullscreen-btn">Fullscreen</button>
+        <button id="reload-btn">Reload</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MQTT-over-WebSocket client (used when ?sensors=1). Loaded eagerly so
+       sensors.js can read the global `mqtt` if enabled. -->
+  <script src="https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js"></script>
+
+  <!-- ── Pyramid placement / calibration ──────────────────────────────────
+       Keeps the hologram in a square on the LEFT of the iPad. The 9.7" screen
+       is only ~14.8 cm on its short side, so a 20 cm pyramid is capped to the
+       screen. THREE-finger tap toggles calibration; then ONE-finger drag moves
+       the square and TWO-finger pinch resizes it. Values persist on the device.
+       A readout shows the live size in cm so you can match the real pyramid. -->
+  <script>
+  (function () {
+    var root = document.documentElement, LS = window.localStorage, canvas, ro;
+    function num(k){ var v = parseFloat(LS.getItem(k)); return isFinite(v) ? v : null; }
+    var size = num('pyrSize'), left = num('pyrLeft'), top = num('pyrTop');
+    function vmin(){ return Math.min(window.innerWidth, window.innerHeight); }
+    function pxPerCm(){ return Math.max(window.innerWidth, window.innerHeight) / 19.68; } // iPad 6th-gen long side ≈ 19.68 cm
+    function S(){ return size != null ? size : vmin(); }
+    function L(){ return left != null ? left : 0; }
+    function T(){ return top  != null ? top  : (window.innerHeight - S()) / 2; }
+    function apply(){
+      root.style.setProperty('--pyr-size', S() + 'px');
+      root.style.setProperty('--pyr-left', L() + 'px');
+      root.style.setProperty('--pyr-top',  T() + 'px');
+      window.dispatchEvent(new Event('resize'));
+      if (ro && ro.style.display !== 'none')
+        ro.textContent = '◧ ' + Math.round(S()) + 'px ≈ ' + (S()/pxPerCm()).toFixed(1) +
+                         ' cm   left ' + Math.round(L()) + '  top ' + Math.round(T());
+    }
+    function start(){
+      canvas = document.getElementById('pyramid-canvas');
+      if (!canvas) return;
+      ro = document.createElement('div');
+      ro.style.cssText = 'position:fixed;left:8px;bottom:8px;z-index:30;color:#7be0c9;'+
+        'font:600 12px -apple-system,sans-serif;background:rgba(0,0,0,.6);padding:4px 8px;'+
+        'border-radius:6px;pointer-events:none;display:none;white-space:nowrap;';
+      document.body.appendChild(ro);
+      var calib = LS.getItem('pyrCalibrate') === '1', g = null;
+      function setCalib(on){
+        calib = on; LS.setItem('pyrCalibrate', on ? '1' : '0');
+        ro.style.display = on ? 'block' : 'none';
+        canvas.style.outline = on ? '2px dashed rgba(123,224,201,.6)' : 'none';
+        apply();
+      }
+      function dist(t){ return Math.hypot(t[0].clientX-t[1].clientX, t[0].clientY-t[1].clientY); }
+      function save(){ if(size!=null)LS.setItem('pyrSize',size); if(left!=null)LS.setItem('pyrLeft',left); if(top!=null)LS.setItem('pyrTop',top); }
+      canvas.addEventListener('touchstart', function(e){
+        if (e.touches.length === 3){ setCalib(!calib); e.preventDefault(); return; }
+        if (!calib) return;
+        if (e.touches.length === 1) g = { m:1, x:e.touches[0].clientX, y:e.touches[0].clientY, l:L(), t:T() };
+        else if (e.touches.length === 2) g = { m:2, d:dist(e.touches), s:S() };
+        e.preventDefault();
+      }, { passive:false });
+      canvas.addEventListener('touchmove', function(e){
+        if (!calib || !g) return;
+        if (g.m === 1){ left = g.l + (e.touches[0].clientX - g.x); top = g.t + (e.touches[0].clientY - g.y); }
+        else if (g.m === 2 && e.touches.length >= 2){ size = Math.max(120, g.s * (dist(e.touches)/g.d)); }
+        save(); apply(); e.preventDefault();
+      }, { passive:false });
+      canvas.addEventListener('touchend', function(){ g = null; }, { passive:false });
+      window.addEventListener('resize', function(){ if (ro && ro.style.display === 'block') apply(); });
+      setCalib(calib);
+      apply();
+    }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
+    else start();
+  })();
+  </script>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>

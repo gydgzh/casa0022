@@ -1,0 +1,68 @@
+Arduino MKR WiFi 1010 — wiring v3 (current 3-sensor build)
+===========================================================
+
+Sensors used in this build:
+  - HW-843 / VL53L0X  (ToF distance, I²C 0x29)   → presence detection
+  - BME280 or BMP280  (temp+hum+pressure, I²C 0x76/0x77)
+  - RC522 RFID        (SPI)                       → book-on-desk UID
+
+Not connected in this build (add later if needed):
+  - TEMT6000 (A0), HC-SR501 PIR (D2), SSD1306 OLED (I²C 0x3C),
+    WS2812B ring (D3). Firmware degrades gracefully — missing
+    sensors just report null in the JSON.
+
+MKR WiFi 1010 pin map:
+  3V3 ─── VL53L0X VIN, BME280 VIN, RC522 3.3V   ⚠ RC522 must NOT get 5 V
+  GND ─── all module GND (common rail)
+  D11 ─── VL53L0X SDA ── BME280 SDA   (I²C bus, parallel)
+  D12 ─── VL53L0X SCL ── BME280 SCL   (I²C bus, parallel)
+  D5  ─── RC522 SDA(SS)
+  D4  ─── RC522 RST          (D6 avoided — it's LED_BUILTIN on the MKR)
+  D8  ─── RC522 MOSI
+  D9  ─── RC522 SCK
+  D10 ─── RC522 MISO
+        ─── RC522 IRQ not connected
+
+Top-down breadboard layout:
+
+  ┌──────────────────────────────────────────────────────────┐
+  │  [MKR WiFi 1010]                                          │
+  │   3V3 GND  D4  D5  D8  D9 D10 D11 D12                     │
+  │    │   │   │   │   │   │   │   │   │                      │
+  │    │   │   │   │   │   │   │   │   └─► SCL rail → VL53L0X│
+  │    │   │   │   │   │   │   │   │                  BME280  │
+  │    │   │   │   │   │   │   │   └─────► SDA rail → VL53L0X│
+  │    │   │   │   │   │   │   │                      BME280  │
+  │    │   │   │   │   │   │   └─────────► RC522 MISO         │
+  │    │   │   │   │   │   └─────────────► RC522 SCK          │
+  │    │   │   │   │   └─────────────────► RC522 MOSI         │
+  │    │   │   │   └─────────────────────► RC522 SDA(SS)      │
+  │    │   │   └─────────────────────────► RC522 RST          │
+  │    │   └───────────── shared GND rail                     │
+  │    └───────────────── shared 3V3 rail                     │
+  └──────────────────────────────────────────────────────────┘
+
+Notes:
+  * I²C pull-ups are already on both breakout boards — no extra resistors.
+  * VL53L0X must look through an OPEN hole (no acrylic/PLA in front),
+    mounted on the box face that points at the reader.
+  * RC522 antenna reads NTAG213 stickers through 2–3 mm MDF/PLA —
+    mount it under the lid, print "PLACE BOOK HERE" on top.
+  * BME vs BMP: firmware reads chip-ID reg 0xD0 at boot
+    (0x60 = BME280 has humidity, 0x58 = BMP280 humidity = null).
+
+Quick verification after flashing (Serial @ 115200):
+  [boot] library_sensors.ino v3 (VL53L0X + BME/BMP280 + RC522)
+  [tof]  VL53L0X OK (0x29)
+  [env]  BME280 OK at 0x76        (or BMP280)
+  [rfid] RC522 OK (version 0x92)
+  [wifi] OK ip=...                (or [ap] gateway IP = 192.168.4.1)
+  [http] listening on http://.../sensors
+
+Bench tests:
+  curl http://<IP>/sensors | python3 -m json.tool
+  - hand in front of ToF       → distance_mm drops, presence:1
+  - hand away, wait 3 s        → presence:0
+  - NFC sticker on RC522       → book_uid:"04AB..." book_present:1
+  - remove sticker, wait 3 s   → book_present:0
+  - breathe on BME280          → humidity_pct rises (BME only)

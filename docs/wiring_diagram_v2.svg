@@ -1,0 +1,216 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1150 940" font-family="Helvetica, Arial, sans-serif">
+  <defs>
+    <style>
+      .wire { fill:none; stroke-width:2; }
+      .pin  { font-size:12px; fill:#222; }
+      .pinR { font-size:12px; fill:#222; text-anchor:end; }
+      .title{ font-size:13px; font-weight:bold; fill:#111; }
+      .sub  { font-size:11px; fill:#666; }
+      .warn { font-size:11px; fill:#c0392b; font-weight:bold; }
+      .dot  { fill:inherit; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1150" height="940" fill="#ffffff"/>
+  <text x="575" y="34" text-anchor="middle" font-size="20" font-weight="bold" fill="#111">Library Sensor Node — Wiring Diagram</text>
+  <text x="575" y="56" text-anchor="middle" font-size="13" fill="#555">Arduino MKR WiFi 1010 · Holographic Virtual Librarian · UCL CASA 0022 · v2 (June 2026)</text>
+
+  <!-- ════ MKR WiFi 1010 board ════ -->
+  <rect x="120" y="115" width="180" height="560" rx="10" fill="#0e5a6d" stroke="#083845" stroke-width="2"/>
+  <text x="210" y="145" text-anchor="middle" font-size="15" font-weight="bold" fill="#fff">Arduino</text>
+  <text x="210" y="163" text-anchor="middle" font-size="15" font-weight="bold" fill="#fff">MKR WiFi 1010</text>
+  <text x="210" y="660" text-anchor="middle" font-size="11" fill="#9fd4e0">USB-C → 5 V power adapter</text>
+
+  <!-- MKR pins (right edge), stubs + labels -->
+  <!-- y: 5V 190 | 3V3 220 | GND 250 | A0 285 | D2 320 | D3 355 | D4 390 | D5 425 | D8 460 | D9 495 | D10 530 | D11 565 | D12 600 -->
+  <g font-size="12" fill="#fff" text-anchor="end">
+    <text x="292" y="194">5V</text>
+    <text x="292" y="224">3V3</text>
+    <text x="292" y="254">GND</text>
+    <text x="292" y="289">A0</text>
+    <text x="292" y="324">D2</text>
+    <text x="292" y="359">D3</text>
+    <text x="292" y="394">D4</text>
+    <text x="292" y="429">D5</text>
+    <text x="292" y="464">D8 MOSI</text>
+    <text x="292" y="499">D9 SCK</text>
+    <text x="292" y="534">D10 MISO</text>
+    <text x="292" y="569">D11 SDA</text>
+    <text x="292" y="604">D12 SCL</text>
+  </g>
+
+  <!-- ════ Sensor boxes (right column) ════ -->
+  <!-- TEMT6000 -->
+  <rect x="720" y="105" width="320" height="80" rx="8" fill="#eef7ee" stroke="#2e7d32" stroke-width="2"/>
+  <text x="735" y="125" class="title">TEMT6000 — ambient light</text>
+  <text x="1030" y="125" class="sub" text-anchor="end">analog</text>
+  <text x="735" y="145" class="pin">VCC</text>
+  <text x="735" y="162" class="pin">GND</text>
+  <text x="735" y="179" class="pin">SIG</text>
+
+  <!-- VL53L0X -->
+  <rect x="720" y="195" width="320" height="100" rx="8" fill="#eef3fb" stroke="#1a5fb4" stroke-width="2"/>
+  <text x="735" y="215" class="title">HW-843 / VL53L0X — ToF distance</text>
+  <text x="1030" y="215" class="sub" text-anchor="end">I²C 0x29</text>
+  <text x="735" y="237" class="pin">VIN</text>
+  <text x="735" y="255" class="pin">GND</text>
+  <text x="735" y="273" class="pin">SDA</text>
+  <text x="735" y="291" class="pin">SCL</text>
+  <text x="1030" y="291" class="sub" text-anchor="end">open hole, faces reader</text>
+
+  <!-- BME280 -->
+  <rect x="720" y="305" width="320" height="100" rx="8" fill="#eef3fb" stroke="#1a5fb4" stroke-width="2"/>
+  <text x="735" y="325" class="title">BME/BMP280 — temp · humidity</text>
+  <text x="1030" y="325" class="sub" text-anchor="end">I²C 0x76/0x77</text>
+  <text x="735" y="347" class="pin">VIN</text>
+  <text x="735" y="365" class="pin">GND</text>
+  <text x="735" y="383" class="pin">SDA</text>
+  <text x="735" y="401" class="pin">SCL</text>
+  <text x="1030" y="401" class="sub" text-anchor="end">chip-ID 0x60=BME · 0x58=BMP</text>
+
+  <!-- OLED (pending) -->
+  <rect x="720" y="415" width="320" height="100" rx="8" fill="#fafafa" stroke="#888" stroke-width="2" stroke-dasharray="6 4"/>
+  <text x="735" y="435" class="title" fill="#666">SSD1306 OLED 0.96&quot; (pending)</text>
+  <text x="1030" y="435" class="sub" text-anchor="end">I²C 0x3C</text>
+  <text x="735" y="457" class="pin">VCC</text>
+  <text x="735" y="475" class="pin">GND</text>
+  <text x="735" y="493" class="pin">SDA</text>
+  <text x="735" y="511" class="pin">SCL</text>
+
+  <!-- RC522 -->
+  <rect x="720" y="525" width="320" height="170" rx="8" fill="#fdf3ec" stroke="#d35400" stroke-width="2"/>
+  <text x="735" y="545" class="title">RC522 — RFID book reader</text>
+  <text x="1030" y="545" class="sub" text-anchor="end">SPI</text>
+  <text x="735" y="567" class="pin">3.3V</text>
+  <text x="870" y="567" class="warn">⚠ 3.3 V only — never 5 V</text>
+  <text x="735" y="585" class="pin">GND</text>
+  <text x="735" y="603" class="pin">SDA (SS)</text>
+  <text x="735" y="621" class="pin">RST</text>
+  <text x="735" y="639" class="pin">MOSI</text>
+  <text x="735" y="657" class="pin">MISO</text>
+  <text x="735" y="675" class="pin">SCK</text>
+  <text x="1030" y="675" class="sub" text-anchor="end">antenna under lid · NTAG213</text>
+
+  <!-- PIR -->
+  <rect x="720" y="705" width="320" height="80" rx="8" fill="#f4eefb" stroke="#6c3fa0" stroke-width="2"/>
+  <text x="735" y="725" class="title">HC-SR501 — PIR motion (backup)</text>
+  <text x="735" y="747" class="pin">VCC</text>
+  <text x="870" y="747" class="warn">⚠ needs 5 V</text>
+  <text x="735" y="765" class="pin">GND</text>
+  <text x="735" y="783" class="pin">OUT</text>
+
+  <!-- WS2812B (pending) -->
+  <rect x="720" y="795" width="320" height="80" rx="8" fill="#fafafa" stroke="#888" stroke-width="2" stroke-dasharray="6 4"/>
+  <text x="735" y="815" class="title" fill="#666">WS2812B 8-LED ring (pending)</text>
+  <text x="735" y="837" class="pin">5V</text>
+  <text x="735" y="855" class="pin">GND</text>
+  <text x="735" y="873" class="pin">DIN</text>
+
+  <!-- ════ Wires ════
+       lanes: 3V3=330 | 5V=352 | GND=374 | A0=396 | D2=418 | D3=440 | D4=462
+              D5=484 | MOSI=506 | SCK=528 | MISO=550 | SDA=572 | SCL=594  -->
+
+  <!-- 3V3 (red): MKR y220 → TEMT 140, VL53 232, BME 342, OLED 452, RC522 562 -->
+  <g stroke="#d62828" class="wire">
+    <path d="M300,220 H330 V562 H720" fill="none"/>
+    <path d="M330,140 H720" fill="none"/>
+    <path d="M330,232 H720" fill="none"/>
+    <path d="M330,342 H720" fill="none"/>
+    <path d="M330,452 H720" fill="none"/>
+    <path d="M330,140 V562" fill="none"/>
+  </g>
+  <g fill="#d62828">
+    <circle cx="330" cy="220" r="3.5"/><circle cx="330" cy="232" r="3.5"/>
+    <circle cx="330" cy="342" r="3.5"/><circle cx="330" cy="452" r="3.5"/>
+  </g>
+
+  <!-- 5V (dark orange): MKR y190 → PIR 742, WS2812 832 -->
+  <g stroke="#e07b00" class="wire">
+    <path d="M300,190 H352 V832 H720" fill="none"/>
+    <path d="M352,742 H720" fill="none"/>
+  </g>
+  <circle cx="352" cy="742" r="3.5" fill="#e07b00"/>
+
+  <!-- GND (black): MKR y250 → TEMT 158, VL53 250, BME 360, OLED 470, RC522 580, PIR 760, WS2812 850 -->
+  <g stroke="#222" class="wire">
+    <path d="M300,250 H374 V850 H720" fill="none"/>
+    <path d="M374,158 H720" fill="none"/>
+    <path d="M374,158 V250" fill="none"/>
+    <path d="M374,250 H720" fill="none"/>
+    <path d="M374,360 H720" fill="none"/>
+    <path d="M374,470 H720" fill="none"/>
+    <path d="M374,580 H720" fill="none"/>
+    <path d="M374,760 H720" fill="none"/>
+  </g>
+  <g fill="#222">
+    <circle cx="374" cy="250" r="3.5"/><circle cx="374" cy="360" r="3.5"/>
+    <circle cx="374" cy="470" r="3.5"/><circle cx="374" cy="580" r="3.5"/>
+    <circle cx="374" cy="760" r="3.5"/>
+  </g>
+
+  <!-- A0 (green): MKR y285 → TEMT SIG 175 -->
+  <path d="M300,285 H396 V175 H720" class="wire" stroke="#2e7d32"/>
+
+  <!-- D2 (purple): MKR y320 → PIR OUT 778 -->
+  <path d="M300,320 H418 V778 H720" class="wire" stroke="#6c3fa0"/>
+
+  <!-- D3 (magenta): MKR y355 → WS2812 DIN 868, 330Ω in series -->
+  <path d="M300,355 H440 V868 H660" class="wire" stroke="#c2185b"/>
+  <rect x="660" y="861" width="36" height="14" fill="#fff" stroke="#c2185b" stroke-width="2"/>
+  <text x="678" y="857" text-anchor="middle" font-size="10" fill="#c2185b">330 Ω</text>
+  <path d="M696,868 H720" class="wire" stroke="#c2185b"/>
+
+  <!-- D4 (brown): MKR y390 → RC522 RST 616 -->
+  <path d="M300,390 H462 V616 H720" class="wire" stroke="#7a4a12"/>
+
+  <!-- D5 (dark red): MKR y425 → RC522 SS 598 -->
+  <path d="M300,425 H484 V598 H720" class="wire" stroke="#a01313"/>
+
+  <!-- D8 MOSI (orange): MKR y460 → RC522 MOSI 634 -->
+  <path d="M300,460 H506 V634 H720" class="wire" stroke="#ef8c00"/>
+
+  <!-- D9 SCK (amber dark): MKR y495 → RC522 SCK 670 -->
+  <path d="M300,495 H528 V670 H720" class="wire" stroke="#b86e00"/>
+
+  <!-- D10 MISO (gold): MKR y530 → RC522 MISO 652 -->
+  <path d="M300,530 H550 V652 H720" class="wire" stroke="#d4a017"/>
+
+  <!-- D11 SDA (blue): MKR y565 → VL53 268, BME 378, OLED 488 -->
+  <g stroke="#1a5fb4" class="wire">
+    <path d="M300,565 H572 V268 H720" fill="none"/>
+    <path d="M572,378 H720" fill="none"/>
+    <path d="M572,488 H720" fill="none"/>
+  </g>
+  <g fill="#1a5fb4">
+    <circle cx="572" cy="378" r="3.5"/><circle cx="572" cy="488" r="3.5"/>
+  </g>
+
+  <!-- D12 SCL (teal): MKR y600 → VL53 286, BME 396, OLED 506 -->
+  <g stroke="#00838f" class="wire">
+    <path d="M300,600 H594 V286 H720" fill="none"/>
+    <path d="M594,396 H720" fill="none"/>
+    <path d="M594,506 H720" fill="none"/>
+  </g>
+  <g fill="#00838f">
+    <circle cx="594" cy="396" r="3.5"/><circle cx="594" cy="506" r="3.5"/>
+  </g>
+
+  <!-- ════ Legend ════ -->
+  <rect x="120" y="720" width="420" height="190" rx="8" fill="#f7f7f7" stroke="#ccc"/>
+  <text x="140" y="745" font-size="13" font-weight="bold" fill="#111">Legend</text>
+  <g font-size="12" fill="#333">
+    <line x1="140" y1="762" x2="180" y2="762" stroke="#d62828" stroke-width="3"/><text x="190" y="766">3V3 power</text>
+    <line x1="140" y1="784" x2="180" y2="784" stroke="#e07b00" stroke-width="3"/><text x="190" y="788">5V power</text>
+    <line x1="140" y1="806" x2="180" y2="806" stroke="#222" stroke-width="3"/><text x="190" y="810">GND (common)</text>
+    <line x1="140" y1="828" x2="180" y2="828" stroke="#2e7d32" stroke-width="3"/><text x="190" y="832">Analog (A0)</text>
+    <line x1="140" y1="850" x2="180" y2="850" stroke="#1a5fb4" stroke-width="3"/><text x="190" y="854">I²C SDA (D11) — shared bus</text>
+    <line x1="140" y1="872" x2="180" y2="872" stroke="#00838f" stroke-width="3"/><text x="190" y="876">I²C SCL (D12) — shared bus</text>
+    <line x1="330" y1="762" x2="370" y2="762" stroke="#ef8c00" stroke-width="3"/><text x="380" y="766">SPI (D8/D9/D10)</text>
+    <line x1="330" y1="784" x2="370" y2="784" stroke="#a01313" stroke-width="3"/><text x="380" y="788">RC522 SS (D5)</text>
+    <line x1="330" y1="806" x2="370" y2="806" stroke="#7a4a12" stroke-width="3"/><text x="380" y="810">RC522 RST (D4)</text>
+    <line x1="330" y1="828" x2="370" y2="828" stroke="#6c3fa0" stroke-width="3"/><text x="380" y="832">Digital GPIO</text>
+    <line x1="330" y1="850" x2="370" y2="850" stroke="#888" stroke-width="2" stroke-dasharray="6 4"/><text x="380" y="854">Pending parts</text>
+    <circle cx="350" cy="872" r="3.5" fill="#222"/><text x="380" y="876">Junction (shared net)</text>
+  </g>
+  <text x="120" y="930" font-size="11" fill="#888">D6 avoided (LED_BUILTIN on MKR WiFi 1010). I²C pull-ups provided on breakout boards. Total draw &lt; 500 mA from USB.</text>
+</svg>

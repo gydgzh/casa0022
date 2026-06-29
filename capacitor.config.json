@@ -1,0 +1,25 @@
+{
+  "appId": "uk.ac.ucl.casa.virtuallibrarian",
+  "appName": "Virtual Librarian",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https",
+    "iosScheme": "capacitor",
+    "cleartext": true,
+    "allowNavigation": ["*"]
+  },
+  "ios": {
+    "contentInset": "always",
+    "scrollEnabled": false,
+    "limitsNavigationsToAppBoundDomains": false,
+    "backgroundColor": "#000000",
+    "webContentsDebuggingEnabled": true
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchAutoHide": true,
+      "backgroundColor": "#000000",
+      "showSpinner": false
+    }
+  }
+}

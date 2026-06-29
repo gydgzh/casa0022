@@ -1,0 +1,131 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 720" font-family="Helvetica, Arial, sans-serif">
+  <defs>
+    <style>
+      .wire { fill:none; stroke-width:2.2; }
+      .pin  { font-size:12px; fill:#222; }
+      .title{ font-size:13px; font-weight:bold; fill:#111; }
+      .sub  { font-size:11px; fill:#666; }
+      .warn { font-size:11px; fill:#c0392b; font-weight:bold; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1100" height="720" fill="#ffffff"/>
+  <text x="550" y="32" text-anchor="middle" font-size="20" font-weight="bold" fill="#111">Library Sensor Node — Wiring (v3 minimal build)</text>
+  <text x="550" y="54" text-anchor="middle" font-size="13" fill="#555">Arduino MKR WiFi 1010 · VL53L0X + BME/BMP280 + RC522 · Holographic Virtual Librarian · UCL CASA 0022</text>
+
+  <!-- MKR board -->
+  <rect x="120" y="100" width="180" height="400" rx="10" fill="#0e5a6d" stroke="#083845" stroke-width="2"/>
+  <text x="210" y="130" text-anchor="middle" font-size="15" font-weight="bold" fill="#fff">Arduino</text>
+  <text x="210" y="148" text-anchor="middle" font-size="15" font-weight="bold" fill="#fff">MKR WiFi 1010</text>
+  <text x="210" y="478" text-anchor="middle" font-size="11" fill="#9fd4e0">USB-C → 5 V adapter</text>
+  <text x="210" y="494" text-anchor="middle" font-size="11" fill="#9fd4e0">Wi-Fi AP "VirtualLibrarian"</text>
+
+  <g font-size="12" fill="#fff" text-anchor="end">
+    <text x="292" y="184">3V3</text>
+    <text x="292" y="219">GND</text>
+    <text x="292" y="259">D4</text>
+    <text x="292" y="294">D5</text>
+    <text x="292" y="329">D8 MOSI</text>
+    <text x="292" y="364">D9 SCK</text>
+    <text x="292" y="399">D10 MISO</text>
+    <text x="292" y="434">D11 SDA</text>
+    <text x="292" y="464">D12 SCL</text>
+  </g>
+
+  <!-- Sensors -->
+  <!-- VL53L0X -->
+  <rect x="700" y="95" width="340" height="105" rx="8" fill="#eef3fb" stroke="#1a5fb4" stroke-width="2"/>
+  <text x="715" y="115" class="title">HW-843 / VL53L0X — ToF distance</text>
+  <text x="1030" y="115" class="sub" text-anchor="end">I²C 0x29</text>
+  <text x="715" y="137" class="pin">VIN</text>
+  <text x="715" y="155" class="pin">GND</text>
+  <text x="715" y="173" class="pin">SDA</text>
+  <text x="715" y="191" class="pin">SCL</text>
+  <text x="1030" y="191" class="sub" text-anchor="end">open hole · faces the reader</text>
+
+  <!-- BME280 -->
+  <rect x="700" y="215" width="340" height="105" rx="8" fill="#eef7ee" stroke="#2e7d32" stroke-width="2"/>
+  <text x="715" y="235" class="title">BME/BMP280 — temp · humidity</text>
+  <text x="1030" y="235" class="sub" text-anchor="end">I²C 0x76/0x77</text>
+  <text x="715" y="257" class="pin">VIN</text>
+  <text x="715" y="275" class="pin">GND</text>
+  <text x="715" y="293" class="pin">SDA</text>
+  <text x="715" y="311" class="pin">SCL</text>
+  <text x="1030" y="311" class="sub" text-anchor="end">chip-ID 0x60=BME · 0x58=BMP</text>
+
+  <!-- RC522 -->
+  <rect x="700" y="335" width="340" height="180" rx="8" fill="#fdf3ec" stroke="#d35400" stroke-width="2"/>
+  <text x="715" y="355" class="title">RC522 — RFID book reader</text>
+  <text x="1030" y="355" class="sub" text-anchor="end">SPI</text>
+  <text x="715" y="377" class="pin">3.3V</text>
+  <text x="850" y="377" class="warn">⚠ 3.3 V only — never 5 V</text>
+  <text x="715" y="395" class="pin">GND</text>
+  <text x="715" y="413" class="pin">SDA (SS)</text>
+  <text x="715" y="431" class="pin">RST</text>
+  <text x="715" y="449" class="pin">MOSI</text>
+  <text x="715" y="467" class="pin">MISO</text>
+  <text x="715" y="485" class="pin">SCK</text>
+  <text x="1030" y="485" class="sub" text-anchor="end">IRQ not connected</text>
+  <text x="1030" y="505" class="sub" text-anchor="end">antenna under lid · NTAG213 stickers</text>
+
+  <!-- Wires -->
+  <!-- lanes: 3V3=340 | GND=372 | D4=404 | D5=436 | MOSI=468 | SCK=500 | MISO=532 | SDA=580 | SCL=610 -->
+
+  <!-- 3V3 (red): MKR 180 → VL53 133, BME 253, RC522 373 -->
+  <g stroke="#d62828" class="wire">
+    <path d="M300,180 H340 V373 H700"/>
+    <path d="M340,133 H700"/>
+    <path d="M340,133 V180"/>
+    <path d="M340,253 H700"/>
+  </g>
+  <g fill="#d62828"><circle cx="340" cy="180" r="3.5"/><circle cx="340" cy="253" r="3.5"/></g>
+
+  <!-- GND (black): MKR 215 → VL53 151, BME 271, RC522 391 -->
+  <g stroke="#222" class="wire">
+    <path d="M300,215 H372 V391 H700"/>
+    <path d="M372,151 H700"/>
+    <path d="M372,151 V215"/>
+    <path d="M372,271 H700"/>
+  </g>
+  <g fill="#222"><circle cx="372" cy="215" r="3.5"/><circle cx="372" cy="271" r="3.5"/></g>
+
+  <!-- D4 → RST 427 -->
+  <path d="M300,255 H404 V427 H700" class="wire" stroke="#7a4a12"/>
+  <!-- D5 → SS 409 -->
+  <path d="M300,290 H436 V409 H700" class="wire" stroke="#a01313"/>
+  <!-- D8 MOSI → 445 -->
+  <path d="M300,325 H468 V445 H700" class="wire" stroke="#ef8c00"/>
+  <!-- D9 SCK → 481 -->
+  <path d="M300,360 H500 V481 H700" class="wire" stroke="#b86e00"/>
+  <!-- D10 MISO → 463 -->
+  <path d="M300,395 H532 V463 H700" class="wire" stroke="#d4a017"/>
+
+  <!-- D11 SDA (blue): MKR 430 → VL53 169, BME 289 -->
+  <g stroke="#1a5fb4" class="wire">
+    <path d="M300,430 H580 V169 H700"/>
+    <path d="M580,289 H700"/>
+  </g>
+  <circle cx="580" cy="289" r="3.5" fill="#1a5fb4"/>
+
+  <!-- D12 SCL (teal): MKR 460 → VL53 187, BME 307 -->
+  <g stroke="#00838f" class="wire">
+    <path d="M300,460 H610 V187 H700"/>
+    <path d="M610,307 H700"/>
+  </g>
+  <circle cx="610" cy="307" r="3.5" fill="#00838f"/>
+
+  <!-- Legend -->
+  <rect x="120" y="545" width="500" height="130" rx="8" fill="#f7f7f7" stroke="#ccc"/>
+  <text x="140" y="570" font-size="13" font-weight="bold" fill="#111">Legend</text>
+  <g font-size="12" fill="#333">
+    <line x1="140" y1="590" x2="178" y2="590" stroke="#d62828" stroke-width="3"/><text x="186" y="594">3V3 power (all three sensors)</text>
+    <line x1="140" y1="612" x2="178" y2="612" stroke="#222" stroke-width="3"/><text x="186" y="616">GND (common rail)</text>
+    <line x1="140" y1="634" x2="178" y2="634" stroke="#1a5fb4" stroke-width="3"/><text x="186" y="638">I²C SDA (D11) — shared bus</text>
+    <line x1="140" y1="656" x2="178" y2="656" stroke="#00838f" stroke-width="3"/><text x="186" y="660">I²C SCL (D12) — shared bus</text>
+    <line x1="390" y1="590" x2="428" y2="590" stroke="#ef8c00" stroke-width="3"/><text x="436" y="594">SPI (D8/D9/D10)</text>
+    <line x1="390" y1="612" x2="428" y2="612" stroke="#a01313" stroke-width="3"/><text x="436" y="616">RC522 SS (D5)</text>
+    <line x1="390" y1="634" x2="428" y2="634" stroke="#7a4a12" stroke-width="3"/><text x="436" y="638">RC522 RST (D4)</text>
+    <circle cx="409" cy="656" r="3.5" fill="#222"/><text x="436" y="660">Junction (shared net)</text>
+  </g>
+  <text x="120" y="700" font-size="11" fill="#888">No 5 V rail needed in this build. D6 avoided (LED_BUILTIN). I²C pull-ups on breakout boards. Total draw &lt; 150 mA from USB.</text>
+</svg>
