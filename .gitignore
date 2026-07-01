@@ -5,3 +5,7 @@ dist/
 .env
 .vite/
 .cache/
+
+# Private handoff notes — contains Wi-Fi password, Apple ID, device UDID, cert IDs.
+# Must NEVER be pushed to the public repo.
+docs/HANDOFF_virtual_librarian.md

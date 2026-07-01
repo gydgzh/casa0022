@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>The Holographic Librarian · UCL CASA</title>
+<meta name="description" content="A glowing, offline companion that helps you discover your next book — and a film to match. MSc Connected Environments project, UCL CASA." />
+<!-- Open Graph (nice previews if the link is shared) -->
+<meta property="og:title" content="The Holographic Librarian" />
+<meta property="og:description" content="A glowing, offline companion that helps you discover your next book — and a film to match." />
+<meta property="og:type" content="website" />
+<!-- Inline SVG favicon: a small glowing book -->
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%23070b14'/><path d='M16 8c-3-1.6-6-1.6-8 0v14c2-1.6 5-1.6 8 0 3-1.6 6-1.6 8 0V8c-2-1.6-5-1.6-8 0z' fill='none' stroke='%237be0c9' stroke-width='1.6'/><line x1='16' y1='8' x2='16' y2='22' stroke='%237be0c9' stroke-width='1.6'/></svg>" />
+<style>
+  :root {
+    --bg:      #070b14;
+    --panel:   rgba(255,255,255,0.045);
+    --panel-2: rgba(255,255,255,0.03);
+    --line:    rgba(255,255,255,0.10);
+    --ink:     #e9eef6;
+    --muted:   #9fb0c3;
+    --cyan:    #7be0c9;
+    --blue:    #7aa8ff;
+    --amber:   #f5b169;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background:
+      radial-gradient(1100px 620px at 50% -8%, rgba(123,224,201,0.16), transparent 60%),
+      radial-gradient(900px 600px at 12% 12%, rgba(122,168,255,0.10), transparent 55%),
+      var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
+    line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 0 22px 72px; }
+
+  /* ---------- Hero ---------- */
+  header { text-align: center; padding: 46px 0 8px; }
+  .eyebrow {
+    font-size: 12.5px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--cyan); font-weight: 600; margin-bottom: 18px; opacity: 0.9;
+  }
+  .hero-art { width: 100%; max-width: 340px; margin: 4px auto 20px; display: block; }
+  h1 {
+    font-size: clamp(30px, 8vw, 46px); line-height: 1.08; margin: 6px 0 12px;
+    font-weight: 800; letter-spacing: -0.02em;
+    background: linear-gradient(180deg, #ffffff, #cfe9e2);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .tagline { font-size: clamp(16px, 4.4vw, 19px); color: var(--muted); max-width: 30ch; margin: 0 auto; }
+
+  /* ---------- Sections ---------- */
+  section { margin-top: 40px; }
+  h2 {
+    font-size: 13px; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--muted); font-weight: 700; margin: 0 0 16px;
+    display: flex; align-items: center; gap: 12px;
+  }
+  h2::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+  .lead {
+    font-size: clamp(16.5px, 4.4vw, 19px); color: #dbe4ef; line-height: 1.72;
+  }
+  .lead strong { color: var(--cyan); font-weight: 600; }
+
+  /* ---------- Step cards ---------- */
+  .cards { display: grid; gap: 14px; }
+  .card {
+    background: linear-gradient(180deg, var(--panel), var(--panel-2));
+    border: 1px solid var(--line); border-radius: 16px; padding: 18px 18px 17px;
+    display: grid; grid-template-columns: 46px 1fr; gap: 15px; align-items: start;
+  }
+  .badge {
+    width: 46px; height: 46px; border-radius: 13px; display: grid; place-items: center;
+    background: rgba(123,224,201,0.12); border: 1px solid rgba(123,224,201,0.28);
+  }
+  .badge svg { width: 24px; height: 24px; }
+  .card h3 { margin: 2px 0 4px; font-size: 16.5px; font-weight: 650; }
+  .card p { margin: 0; color: var(--muted); font-size: 14.5px; line-height: 1.55; }
+  .card .num { color: var(--cyan); font-weight: 700; }
+
+  /* ---------- Feature grid (behind the scenes) ---------- */
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .feat {
+    background: var(--panel-2); border: 1px solid var(--line); border-radius: 14px;
+    padding: 16px;
+  }
+  .feat .k { font-size: 15px; font-weight: 650; margin: 0 0 4px; }
+  .feat .v { font-size: 13.5px; color: var(--muted); margin: 0; line-height: 1.5; }
+  .feat .dot { color: var(--blue); }
+
+  /* ---------- Footer ---------- */
+  footer {
+    margin-top: 50px; padding-top: 26px; border-top: 1px solid var(--line);
+    text-align: center; color: var(--muted); font-size: 14px;
+  }
+  footer .who { color: var(--ink); font-weight: 650; font-size: 16px; }
+  footer a { color: var(--cyan); text-decoration: none; }
+  footer a:hover { text-decoration: underline; }
+  .repo {
+    display: inline-flex; align-items: center; gap: 8px; margin-top: 18px;
+    padding: 9px 15px; border: 1px solid var(--line); border-radius: 999px;
+    color: var(--ink); text-decoration: none; font-size: 13.5px;
+  }
+  .repo:hover { border-color: rgba(123,224,201,0.5); }
+  .repo svg { width: 16px; height: 16px; opacity: 0.85; }
+
+  @media (max-width: 460px) {
+    .grid2 { grid-template-columns: 1fr; }
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .glow { animation: pulse 5.5s ease-in-out infinite; transform-origin: center; }
+    @keyframes pulse { 0%,100% { opacity: 0.85; } 50% { opacity: 1; } }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="eyebrow">Connected Environments Exhibition 2026 · UCL CASA</div>
+
+    <!-- Self-contained hologram illustration (no external image files) -->
+    <svg class="hero-art" viewBox="0 0 320 260" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <defs>
+        <radialGradient id="head" cx="50%" cy="42%" r="60%">
+          <stop offset="0%" stop-color="#eafff9"/>
+          <stop offset="45%" stop-color="#7be0c9"/>
+          <stop offset="100%" stop-color="#2a6b5f" stop-opacity="0"/>
+        </radialGradient>
+        <linearGradient id="ray" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#7be0c9" stop-opacity="0.55"/>
+          <stop offset="100%" stop-color="#7be0c9" stop-opacity="0"/>
+        </linearGradient>
+        <linearGradient id="glass" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#7be0c9" stop-opacity="0.30"/>
+          <stop offset="100%" stop-color="#7aa8ff" stop-opacity="0.05"/>
+        </linearGradient>
+      </defs>
+
+      <!-- light rays -->
+      <g class="glow">
+        <polygon points="160,60 120,20 200,20" fill="url(#ray)"/>
+        <polygon points="160,60 92,44 228,44" fill="url(#ray)" opacity="0.5"/>
+      </g>
+
+      <!-- floating avatar (glowing head + shoulders) -->
+      <g class="glow">
+        <circle cx="160" cy="86" r="46" fill="url(#head)"/>
+        <circle cx="160" cy="82" r="21" fill="#eafff9" opacity="0.95"/>
+        <path d="M132 128 q28 -26 56 0 q6 10 4 22 h-64 q-2 -12 4 -22 z" fill="#7be0c9" opacity="0.85"/>
+      </g>
+
+      <!-- Pepper's Ghost reflector pyramid (inverted trapezoid) -->
+      <g>
+        <polygon points="98,168 222,168 178,236 142,236" fill="url(#glass)" stroke="#7be0c9" stroke-opacity="0.55" stroke-width="1.5"/>
+        <line x1="160" y1="168" x2="160" y2="236" stroke="#7be0c9" stroke-opacity="0.25" stroke-width="1"/>
+        <line x1="98" y1="168" x2="142" y2="236" stroke="#7be0c9" stroke-opacity="0.35" stroke-width="1"/>
+        <line x1="222" y1="168" x2="178" y2="236" stroke="#7be0c9" stroke-opacity="0.35" stroke-width="1"/>
+      </g>
+
+      <!-- floating book + film glyphs -->
+      <g opacity="0.9">
+        <g transform="translate(60,150)">
+          <path d="M0 6c6-4 12-4 18 0v22c-6-4-12-4-18 0z" fill="none" stroke="#7aa8ff" stroke-width="1.6"/>
+          <path d="M18 6c6-4 12-4 18 0v22c-6-4-12-4-18 0z" fill="none" stroke="#7aa8ff" stroke-width="1.6"/>
+        </g>
+        <g transform="translate(232,150)">
+          <rect x="0" y="4" width="30" height="22" rx="3" fill="none" stroke="#f5b169" stroke-width="1.6"/>
+          <path d="M30 10l7-4v18l-7-4z" fill="none" stroke="#f5b169" stroke-width="1.6"/>
+        </g>
+      </g>
+    </svg>
+
+    <h1>The Holographic Librarian</h1>
+    <p class="tagline">A glowing companion that helps you find your next book — and a film to match.</p>
+  </header>
+
+  <section>
+    <h2>What it is</h2>
+    <p class="lead">
+      The Holographic Librarian is a small interactive installation that greets readers with a
+      <strong>glowing, floating figure</strong>. Its sensors notice when someone steps close, and can tell when a
+      book is placed nearby. Tell it what you enjoy — space, history, romance — and the librarian
+      <strong>speaks back</strong>, suggesting a book and a film to match your mood and the room around you.
+      Everything runs offline, with no internet and no cameras recording you. Designed for libraries,
+      bookshops and study spaces, it turns the familiar question of <em>“what should I read next?”</em>
+      into a small, playful conversation.
+    </p>
+  </section>
+
+  <section>
+    <h2>Try it in three steps</h2>
+    <div class="cards">
+      <div class="card">
+        <div class="badge">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#7be0c9" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="7" r="3.4"/><path d="M5 20c0-3.9 3.1-6.5 7-6.5s7 2.6 7 6.5"/></svg>
+        </div>
+        <div>
+          <h3><span class="num">1.</span> Step up</h3>
+          <p>Walk up to the installation. The librarian senses you approach and comes to life.</p>
+        </div>
+      </div>
+      <div class="card">
+        <div class="badge">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#7be0c9" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg>
+        </div>
+        <div>
+          <h3><span class="num">2.</span> Say what you like</h3>
+          <p>Tell it a topic — space, history, romance. It listens right there on the device. You can also place a book on the desk and it will recognise it.</p>
+        </div>
+      </div>
+      <div class="card">
+        <div class="badge">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#7be0c9" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6c-2.5-1.4-5-1.4-7 0v12c2-1.4 4.5-1.4 7 0 2.5-1.4 5-1.4 7 0V6c-2-1.4-4.5-1.4-7 0z"/><path d="M12 6v12"/></svg>
+        </div>
+        <div>
+          <h3><span class="num">3.</span> Get a recommendation</h3>
+          <p>It suggests a book and a film to match your mood and the room — and reads them aloud.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Behind the scenes</h2>
+    <div class="grid2">
+      <div class="feat">
+        <p class="k"><span class="dot">●</span> Completely offline</p>
+        <p class="v">No internet needed — the speech, the recommendations and the voice all run on the device itself.</p>
+      </div>
+      <div class="feat">
+        <p class="k"><span class="dot">●</span> Private by design</p>
+        <p class="v">No cameras record you and nothing is sent to the cloud. It only reacts to the moment.</p>
+      </div>
+      <div class="feat">
+        <p class="k"><span class="dot">●</span> Feels the room</p>
+        <p class="v">Small sensors read distance, temperature and humidity to notice who is near and set the mood.</p>
+      </div>
+      <div class="feat">
+        <p class="k"><span class="dot">●</span> A real hologram trick</p>
+        <p class="v">The floating figure is a bright screen reflected onto angled glass — the classic “Pepper’s Ghost” illusion.</p>
+      </div>
+    </div>
+  </section>
+
+  <!--
+    ▶ OPTIONAL: add a real photo / GIF / video of the installation here.
+      1. Drop the file into this /docs folder (e.g. demo.jpg or demo.mp4).
+      2. Uncomment ONE of the blocks below.
+
+    <section>
+      <h2>See it in action</h2>
+      <img src="demo.jpg" alt="The Holographic Librarian installation" style="width:100%;border-radius:16px;border:1px solid var(--line)" />
+    </section>
+
+    <section>
+      <h2>See it in action</h2>
+      <video src="demo.mp4" controls playsinline style="width:100%;border-radius:16px;border:1px solid var(--line)"></video>
+    </section>
+  -->
+
+  <footer>
+    <p class="who">Created by Yidan</p>
+    <p>MSc Connected Environments · UCL Centre for Advanced Spatial Analysis (CASA)<br/>Connected Environments Exhibition 2026</p>
+    <a class="repo" href="https://github.com/gydgzh/casa0022" target="_blank" rel="noopener">
+      <svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+      View the project on GitHub
+    </a>
+  </footer>
+
+</div>
+</body>
+</html>
