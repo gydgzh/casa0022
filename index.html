@@ -24,10 +24,12 @@
       -webkit-tap-highlight-color: transparent;
     }
     #app { position: fixed; inset: 0; }
-    /* Pepper's-ghost canvas confined to a square on the LEFT of the iPad.
-       Size/position are CSS vars set by the calibration script below
-       (default: square the height of the screen, flush left, vertically
-       centred). pyramid.js auto-fits its 4-view cross to this square. */
+    /* Pepper's-ghost canvas confined to a square on the RIGHT HALF of the
+       iPad (exhibition layout: the physical prism + all readable UI live on
+       the right; the left half stays black). Size/position are CSS vars set
+       by the calibration script below (default: square capped to half the
+       screen width, flush to the right half, vertically centred).
+       pyramid.js auto-fits its 4-view cross to this square. */
     #pyramid-canvas {
       position: absolute;
       top:  var(--pyr-top, 0px);
@@ -37,6 +39,14 @@
       background: #000;
       display: block;
     }
+    /* Pepper's-ghost pre-compensation: the mirror reflection inverts the
+       image vertically, so everything the visitor reads THROUGH the mirror —
+       avatar, book popup, recommendations — renders upside down on screen and
+       appears upright in the reflection. Visual only — face capture, avatar
+       position and touch calibration are untouched. Disable with ?flip=0. */
+    body.mirror-flip #pyramid-canvas { transform: scaleY(-1); }
+    body.mirror-flip #book-popup     { transform: scaleY(-1); }
+    body.mirror-flip #suggest-panel  { transform: scaleY(-1); }
     .panel {
       position: fixed;
       z-index: 10;
@@ -83,13 +93,14 @@
     /* Display-only mode (iPad): hide everything except the canvas */
     body.display-mode .panel,
     body.display-mode #preview { display: none; }
-    /* Sensor dashboard — right edge, outside the pyramid footprint.
+    /* Sensor dashboard — LEFT edge (exhibition layout: plain text lives on
+       the left; the avatar + recommendations own the right).
        Shown only when ?sensors=1 / ?sensors=mock is in the URL. */
     #dashboard-canvas {
       position: fixed;
-      right: 12px; top: 12px;
+      left: 12px; top: 64px;
       width: 280px;
-      height: calc(100% - 24px);
+      height: calc(100% - 76px);
       z-index: 9;
       background: rgba(0, 0, 0, 0.55);
       backdrop-filter: blur(6px);
@@ -105,8 +116,9 @@
     #mode-selector {
       position: fixed;
       top: 14px;
-      left: 50%;
-      transform: translateX(-50%);
+      right: 68px;   /* top-right, beside the settings gear, clear of the avatar's face */
+      left: auto;
+      transform: none;
       z-index: 12;
       display: flex;
       gap: 3px;
@@ -150,9 +162,9 @@
     /* ───── Mood badge floating just under the mode selector ───── */
     #mood-badge {
       position: fixed;
-      top: 70px;
-      left: 50%;
-      transform: translateX(-50%);
+      top: 120px;
+      left: 22px;   /* left column, under the title (exhibition layout) */
+      transform: none;
       z-index: 11;
       background: rgba(0, 0, 0, 0.55);
       backdrop-filter: blur(8px);
@@ -226,7 +238,7 @@
     /* ───── Status pill (lower-left corner, replaces debug HUD) ───── */
     #app-status {
       position: fixed;
-      bottom: 16px; left: 22px;
+      bottom: 16px; left: 22px;   /* bottom-left: plain text stays on the left */
       z-index: 10;
       display: flex;
       align-items: center;
@@ -373,7 +385,8 @@
 
     /* ───── "Book scanned" popup (fires when RC522 detects a book) ───── */
     #book-popup {
-      position: fixed; inset: 0; z-index: 25;
+      /* Confined to the RIGHT HALF (exhibition layout) */
+      position: fixed; top: 0; right: 0; bottom: 0; left: 50%; z-index: 25;
       display: none; align-items: center; justify-content: center;
       pointer-events: none;
     }
@@ -416,7 +429,7 @@
 
     /* ───── Push-to-talk button (offline Vosk speech) ───── */
     #ptt-btn {
-      position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+      position: fixed; bottom: 24px; left: 25%; transform: translateX(-50%);   /* left half */
       z-index: 13;
       display: none; align-items: center; gap: 9px;
       padding: 13px 24px; border-radius: 999px;
@@ -437,6 +450,31 @@
       box-shadow: 0 0 30px rgba(123, 224, 201, 0.5);
     }
     #ptt-btn.loading { opacity: .65; }
+
+    /* ───── Recommendations panel (RIGHT side, exhibition layout) ─────
+       Book + film suggestions as a compact top-right card, clear of the
+       avatar's face (which sits at the right half's two-thirds point). */
+    #suggest-panel {
+      position: fixed;
+      top: 72px; right: 12px;
+      width: 252px;
+      z-index: 9;
+      display: none;
+      flex-direction: column;
+      gap: 14px;
+      padding: 14px 16px;
+      background: rgba(0, 0, 0, 0.55);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 10px;
+      font: 12px -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+    body.sensors-on #suggest-panel { display: flex; }
+    body.display-mode #suggest-panel { display: none; }
+    #suggest-panel .sp-h { font-weight: 600; font-size: 13px; color: #e8e8e8; margin-bottom: 4px; }
+    #suggest-panel .sp-t { font-weight: 600; font-size: 14px; color: var(--accent); line-height: 1.35; }
+    #suggest-panel .sp-c { color: #888; margin-top: 2px; }
   </style>
 </head>
 <body>
@@ -458,6 +496,19 @@
     </div>
 
     <!-- Push-to-talk: hold, say a topic (offline Vosk) → biases the film -->
+    <div id="suggest-panel" aria-label="Recommendations">
+      <div class="sp-sec">
+        <div class="sp-h">Suggested book</div>
+        <div class="sp-t" id="sp-book-title">Say “Hello”, then a topic…</div>
+        <div class="sp-c" id="sp-book-credit"></div>
+      </div>
+      <div class="sp-sec">
+        <div class="sp-h">Suggested film</div>
+        <div class="sp-t" id="sp-film-title">—</div>
+        <div class="sp-c" id="sp-film-credit"></div>
+      </div>
+    </div>
+
     <button id="ptt-btn" aria-label="Speech status" tabindex="-1">
       <span class="ptt-ic">🎤</span><span id="ptt-label">Starting…</span>
     </button>
@@ -512,6 +563,19 @@
           Leave blank to use synthetic mock data for UI testing.<br>
           AP-mode default: 192.168.4.1 (join the "VirtualLibrarian" Wi-Fi).
         </div>
+        <label for="set-relay-host">Mac relay IP (live face mirror, optional)</label>
+        <input id="set-relay-host" type="text" inputmode="decimal" placeholder="e.g. 192.168.4.2 — Mac running the webcam capture" />
+        <div style="margin-top:4px;font-size:11px;color:#777;line-height:1.4">
+          IP of the Mac running <b>npm start</b> (external webcam → avatar mirrors
+          the visitor). Leave blank when the iPad runs standalone (idle avatar).
+        </div>
+        <label for="set-camera">Capture camera (label contains…, this device only)</label>
+        <input id="set-camera" type="text" placeholder="e.g. web camera — blank = system default" />
+        <label for="set-face">Face tracking (this device's camera)</label>
+        <select id="set-face" style="width:100%;padding:10px 12px;background:#1d1d1d;color:#e8e8e8;border:1px solid #333;border-radius:8px;">
+          <option value="1">On — avatar mirrors the visitor's face</option>
+          <option value="0">Off — idle avatar (lightest, for week-long runs)</option>
+        </select>
         <label for="set-features">Default mode</label>
         <select id="set-features" style="width:100%;padding:10px 12px;background:#1d1d1d;color:#e8e8e8;border:1px solid #333;border-radius:8px;">
           <option value="both">Both — Mirror + Listen</option>
@@ -593,18 +657,33 @@
   <script>
   (function () {
     var root = document.documentElement, LS = window.localStorage, canvas, ro;
+    // Layout v3 (exhibition): BIG avatar centred at the right half's
+    // two-thirds point; plain text lives on the left. Forget calibration
+    // saved under older layouts ONCE so the new defaults actually show.
+    // Manual three-finger recalibration still works and persists afterwards.
+    if (LS.getItem('pyrLayout') !== 'right5') {
+      LS.removeItem('pyrSize'); LS.removeItem('pyrLeft'); LS.removeItem('pyrTop');
+      LS.setItem('pyrLayout', 'right5');
+    }
     function num(k){ var v = parseFloat(LS.getItem(k)); return isFinite(v) ? v : null; }
     var size = num('pyrSize'), left = num('pyrLeft'), top = num('pyrTop');
     function vmin(){ return Math.min(window.innerWidth, window.innerHeight); }
     function pxPerCm(){ return Math.max(window.innerWidth, window.innerHeight) / 19.68; } // iPad 6th-gen long side ≈ 19.68 cm
+    // MAXIMUM avatar: the biggest square the screen allows (full height in
+    // landscape), flush against the right edge, vertically centred.
     function S(){ return size != null ? size : vmin(); }
-    function L(){ return left != null ? left : 0; }
+    function L(){ return left != null ? left : window.innerWidth - S(); }
     function T(){ return top  != null ? top  : (window.innerHeight - S()) / 2; }
+    var applying = false;   // guards the self-dispatched resize below — without it,
+                            // apply → resize event → resize listener → apply recursed
+                            // forever whenever calibration mode was left on (RangeError
+                            // "Maximum call stack size exceeded" at every startup).
     function apply(){
       root.style.setProperty('--pyr-size', S() + 'px');
       root.style.setProperty('--pyr-left', L() + 'px');
       root.style.setProperty('--pyr-top',  T() + 'px');
-      window.dispatchEvent(new Event('resize'));
+      applying = true;
+      try { window.dispatchEvent(new Event('resize')); } finally { applying = false; }
       if (ro && ro.style.display !== 'none')
         ro.textContent = '◧ ' + Math.round(S()) + 'px ≈ ' + (S()/pxPerCm()).toFixed(1) +
                          ' cm   left ' + Math.round(L()) + '  top ' + Math.round(T());
@@ -640,7 +719,7 @@
         save(); apply(); e.preventDefault();
       }, { passive:false });
       canvas.addEventListener('touchend', function(){ g = null; }, { passive:false });
-      window.addEventListener('resize', function(){ if (ro && ro.style.display === 'block') apply(); });
+      window.addEventListener('resize', function(){ if (!applying && ro && ro.style.display === 'block') apply(); });
       setCalib(calib);
       apply();
     }

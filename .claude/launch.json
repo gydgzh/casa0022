@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "librarian-http",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "start:http"],
+      "port": 5173
+    }
+  ]
+}

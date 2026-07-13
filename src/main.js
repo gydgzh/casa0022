@@ -30,6 +30,17 @@ const q = new URLSearchParams(location.search);
 // capture = Mac + webcam (default), display = iPad receiver, demo = no webcam (procedural)
 const MODE = q.get('mode') || 'capture';
 const LOWEND = q.get('lowend') === '1';
+// Face-tracking (camera + MediaPipe): ON by default — mirroring the visitor's
+// face IS the project's theme. On the 2 GB A10 iPad it is the biggest
+// memory/GPU consumer and was implicated in the ~30-min throttling; the Web
+// Worker watchdog now self-heals the audio side, but for the week-long
+// unattended run it can be disabled in Settings (or ?face=0). Priority:
+// ?face= URL param → Settings toggle (localStorage faceTracking) → ON.
+const _isCapacitorRT = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+const _faceLS = localStorage.getItem('faceTracking');
+const FACE_TRACKING =
+  q.get('face') !== null ? q.get('face') === '1' :
+  _faceLS      !== null  ? _faceLS === '1'       : true;
 const TRACKER_DEFAULT = q.get('tracker') || 'face';
 // Avatar selection priority:
 //   1. ?avatar=… URL parameter (explicit override)
@@ -42,10 +53,29 @@ const _isCapacitorAvatar = !!(window.Capacitor && window.Capacitor.isNativePlatf
 const AVATAR_URL =
   _qAvatar !== null ? _qAvatar :
   (localStorage.getItem('avatarUrl') || (_isCapacitorAvatar ? '/3D_/ryu2.vrm' : null));
+// Which camera drives face capture (Mac may have several: built-in FaceTime,
+// an external UVC webcam, iPhone Continuity). Match by label substring,
+// e.g. ?cam=web%20camera or Settings → Camera. Empty → browser default.
+const CAM_FILTER = (q.get('cam') || localStorage.getItem('camDevice') || '').trim();
+// Where the WebSocket relay lives (the capture Mac's IP). On the iPad the page
+// host is capacitor://localhost, so it MUST be set explicitly (Settings → Mac
+// relay IP) for the mirror link; empty falls back to the page's own hostname.
+const RELAY_HOST = (q.get('relay') || localStorage.getItem('relayHost') || '').trim();
+// Wake word ("Hello, librarian"): in the exhibition the librarian stays idle
+// until greeted, so it doesn't blurt recommendations at passers-by. Default ON
+// in the Capacitor app, OFF in browser dev; override with ?wake=1 / ?wake=0.
+const WAKE_GATE = q.get('wake') !== null ? q.get('wake') === '1' : _isCapacitorRT;
+// Spoken replies (offline TTS). LISTEN-ONLY by default: the librarian shows
+// its recommendations on screen but stays silent. Re-enable with ?tts=1.
+const TTS_ON = q.get('tts') === '1';
 
 // ?debug=1 unhides the developer panels (FPS, tracker/layout dropdowns).
 // In a normal app launch they stay hidden so the UI feels finished.
 if (q.get('debug') === '1') document.body.classList.add('debug-on');
+// Mirror pre-flip (Pepper's ghost): the avatar canvas renders upside down so
+// the mirror reflection reads upright. On by default; ?flip=0 disables (e.g.
+// when viewing the screen directly without the prism).
+if (q.get('flip') !== '0') document.body.classList.add('mirror-flip');
 // Sensor data source:
 //   * ?sensors=1     — live MQTT (needs Mosquitto + Arduino reachable)
 //   * ?sensors=mock  — synthetic in-browser data (good for UI testing)
@@ -260,11 +290,28 @@ setInterval(() => {
 let dashboard = null;
 if (SENSORS_MODE === 'mock') {
   initSensorsMock();
-  dashboard = new Dashboard(document.getElementById('dashboard-canvas'), { audio, getSpeechState });
+  dashboard = new Dashboard(document.getElementById('dashboard-canvas'), { audio, getSpeechState, hideSuggestions: true });
 } else if (SENSORS_MODE === '1' || SENSORS_MODE === 'live') {
   initSensorsLive();
-  dashboard = new Dashboard(document.getElementById('dashboard-canvas'), { audio, getSpeechState });
+  dashboard = new Dashboard(document.getElementById('dashboard-canvas'), { audio, getSpeechState, hideSuggestions: true });
 }
+
+/* ---------- Right-side recommendations panel (exhibition layout) ----------
+ * Book + film suggestions live in their own HTML card at the top-right so
+ * they never cover the avatar's face; the left-side dashboard shows only
+ * sensor data (hideSuggestions above). */
+(() => {
+  const bt = document.getElementById('sp-book-title'),  bc = document.getElementById('sp-book-credit');
+  const ft = document.getElementById('sp-film-title'),  fc = document.getElementById('sp-film-credit');
+  if (!bt || !ft) return;
+  setInterval(() => {
+    const b = speechState.book, f = speechState.film;
+    bt.textContent = b ? '📖 ' + b.title : 'Say “Hello”, then a topic…';
+    bc.textContent = b ? 'by ' + (b.creator || '') : '';
+    ft.textContent = f ? '🎬 ' + f.title : '—';
+    fc.textContent = f ? 'dir. ' + (f.creator || '') : '';
+  }, 1000);
+})();
 
 /* ---------- "Book scanned" popup ----------
  * Prominent overlay that fires the moment the RC522 (field-loading detection)
@@ -281,6 +328,8 @@ const _bp = {
 function showBookPopup(uid) {
   if (!_bp.el) return;
   const b = bookByUid(uid);
+  playScanChime();                               // audible "book found" cue
+  console.log('[book] scanned uid=' + uid + ' → ' + ((b && !b.unknown) ? b.title : 'UNKNOWN tag'));
   _bp.title.textContent  = (b && !b.unknown) ? b.title : ('Tag ' + uid);
   _bp.author.textContent = (b && b.creator) ? b.creator : '';
   updateFilmFromSensors();                       // refresh the matching film
@@ -300,8 +349,14 @@ function hideBookPopup() {
 setInterval(() => {
   const s = getSensorState();
   const uid = (s.bookPresent === 1 && s.bookUid) ? s.bookUid : '';
-  if (uid && uid !== _bp.lastUid) { _bp.lastUid = uid; showBookPopup(uid); }
-  else if (!uid && _bp.lastUid)   { _bp.lastUid = ''; hideBookPopup(); }
+  // Debounce on the RESOLVED title, not the raw UID: each exhibition book
+  // carries two tags (Feiju sticker + Mifare card) and the PN532 alternates
+  // between their UIDs every poll — comparing UIDs re-fired the popup+chime
+  // in a loop. Same book = same title = one popup; unknown tags fall back to
+  // the UID so two different unknown tags still both announce themselves.
+  const key = uid ? ((bookByUid(uid) && !bookByUid(uid).unknown) ? bookByUid(uid).title : uid) : '';
+  if (key && key !== _bp.lastUid) { _bp.lastUid = key; showBookPopup(uid); }
+  else if (!key && _bp.lastUid)   { _bp.lastUid = ''; hideBookPopup(); }
 }, 300);
 
 /* Sentiment overlay — boosts smile/frown/brow on the avatar for ~4 s
@@ -335,6 +390,62 @@ function overlayMood(bs) {
   return out;
 }
 
+/* ---------- Wake chime ----------
+ * TTS is off (listen-only), so this loud two-note "ding-ding" is the ONLY
+ * audible cue that "Hello" was heard and the librarian is ready for a topic.
+ * Synthesised with Web Audio — no asset, works offline. The context is
+ * created/resumed inside the setup tap (same gesture that unlocks the mic). */
+let _chimeCtx = null;
+function ensureChimeCtx() {
+  try {
+    if (!_chimeCtx) _chimeCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (_chimeCtx.state === 'suspended') _chimeCtx.resume().catch(() => {});
+  } catch (_) {}
+  return _chimeCtx;
+}
+function playWakeChime() {
+  const ctx = ensureChimeCtx();
+  if (!ctx) return;
+  if (voskRec) {           // don't let the recogniser transcribe the chime
+    voskRec.muted = true;
+    setTimeout(() => { if (voskRec) voskRec.muted = false; }, 700);
+  }
+  const t = ctx.currentTime + 0.02;
+  // E6 → A6, short attack, ~loud (0.85 peak) — cuts through exhibition noise
+  [[1318.5, 0, 0.22], [1760, 0.18, 0.38]].forEach(([f, dt, dur]) => {
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = 'sine'; o.frequency.value = f;
+    g.gain.setValueAtTime(0.0001, t + dt);
+    g.gain.exponentialRampToValueAtTime(0.85, t + dt + 0.025);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dt + dur);
+    o.connect(g); g.connect(ctx.destination);
+    o.start(t + dt); o.stop(t + dt + dur + 0.05);
+  });
+}
+
+/* Book-scan chime — a falling "ding-dong" (distinct from the RISING wake
+   chime) that confirms the PN532 read a book, synced with the popup. Same
+   Web Audio context as the wake chime (unlocked by the same setup tap). */
+function playScanChime() {
+  const ctx = ensureChimeCtx();
+  if (!ctx) return;
+  if (voskRec) {           // don't let the recogniser transcribe the chime
+    voskRec.muted = true;
+    setTimeout(() => { if (voskRec) voskRec.muted = false; }, 700);
+  }
+  const t = ctx.currentTime + 0.02;
+  // G6 → C6, falling fourth — reads as "found it!" against the wake chime's rise
+  [[1568, 0, 0.22], [1046.5, 0.18, 0.42]].forEach(([f, dt, dur]) => {
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = 'sine'; o.frequency.value = f;
+    g.gain.setValueAtTime(0.0001, t + dt);
+    g.gain.exponentialRampToValueAtTime(0.85, t + dt + 0.025);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dt + dur);
+    o.connect(g); g.connect(ctx.destination);
+    o.start(t + dt); o.stop(t + dt + dur + 0.05);
+  });
+}
+
 /* Offline text-to-speech: the librarian speaks its recommendation aloud.
    iOS speechSynthesis is on-device, so this works with no Wi-Fi. While it
    talks we mute the recogniser so it doesn't transcribe its own voice. */
@@ -342,6 +453,7 @@ let _ttsLast = 0;
 let _lastPartialReco = 0;
 function librarianSay(text) {
   try {
+    if (!TTS_ON) return;   // listen-only mode: recommendations appear on screen, no voice
     if (!('speechSynthesis' in window) || !text) return;
     const now = Date.now();
     if (now - _ttsLast < 4000) return;        // don't talk over itself
@@ -359,12 +471,74 @@ function librarianSay(text) {
   } catch (_) {}
 }
 
+/* ---------- Wake word: "Hello, librarian" ----------
+ * In the exhibition the librarian stays idle until greeted, so it doesn't
+ * blurt recommendations at every passer-by (tutor feedback). The recogniser
+ * keeps transcribing while idle (it must HEAR the greeting) but nothing is
+ * recommended or spoken until someone says the wake phrase. Once woken it
+ * stays awake for WAKE_WINDOW_MS, extended by each further utterance.
+ * Matching is deliberately loose ('librar' catches librarian/library) since
+ * the small offline Vosk model sometimes mangles "librarian". */
+const WAKE_WINDOW_MS = 45000;
+let _awakeUntil = 0;
+const isIdleGated = () => WAKE_GATE && Date.now() >= _awakeUntil;
+// Two-tier mic for the week-long run: while idle the Vosk recogniser is
+// hot-swapped onto this tiny closed grammar — the decoder can ONLY hear the
+// wake word (and its near-homophones from matchesWake), so ambient exhibition
+// chatter costs near-zero A10 CPU/RAM instead of a full open-vocab decode.
+// '[unk]' is load-bearing: without it EVERY utterance would be force-fitted
+// to "hello" and false-wake the librarian. On wake we swap to open vocabulary
+// (see onSpeech); healSpeech lapses us back once the awake window expires.
+const WAKE_GRAMMAR = JSON.stringify(['hello', 'hollow', 'halo', 'hulu', '[unk]']);
+function matchesWake(text) {
+  // Wake word: "hello" — simple on purpose (the exhibitor's accent), and
+  // FORGIVING about near-homophones the small Vosk model hears instead
+  // (hallo/hollow/halo/hulu are how a non-native "hello" often transcribes).
+  // Whole words only, so ambient chatter doesn't fire it.
+  return /\b(hello|hallo|hullo|allo|hollow|halo|hulu)\b/.test(text.toLowerCase());
+}
+// True when the utterance is JUST the greeting ("hello librarian") with no
+// topic words worth recommending from.
+function isBareGreeting(text) {
+  const rest = text.toLowerCase().replace(/\b(hello|hallo|hullo|hey|hi|librarian|librarians|liberian|library|libraries|and|in|the|a|an)\b/g, ' ');
+  return rest.split(/[^a-z']+/).filter(Boolean).length < 2;
+}
+
 /* Speech callback: gets fired by SpeechRecognizer on every interim or
    final result. We update the dashboard state immediately, then on final
    results we re-run sentiment classification + book recommendation. */
 function onSpeech(text, isFinal) {
+  // Idle (wake-gated): only listen for the greeting. Nothing else may leak —
+  // not into the pill, and (crucially) not into speechState.text, which the
+  // 8 s film-recommendation interval reads.
+  if (isIdleGated()) {
+    speechState.text = ''; speechState.textFinal = false;
+    if (matchesWake(text)) {
+      _awakeUntil = Date.now() + WAKE_WINDOW_MS;
+      setMood('happy');
+      playWakeChime();     // audible "I heard you" (TTS stays off)
+      voskRec?.setGrammar(null);   // open vocabulary NOW — the topic comes next
+      const _lbl = document.getElementById('ptt-label');
+      if (_lbl && voskRec?.listening) _lbl.textContent = 'Listening';
+      librarianSay('Hello! What kind of books do you enjoy?');   // no-op unless ?tts=1
+      console.log('[wake] woken by:', text);
+    }
+    updateMoodBadge();
+    return;
+  }
+  // The greeting itself isn't a topic: a partial wakes us, then the SAME
+  // utterance's final arrives here. Swallow pure greetings (repeats too);
+  // "hello librarian I like space" still flows through for its topic words.
+  if (WAKE_GATE && matchesWake(text) && isBareGreeting(text)) {
+    if (isFinal) _awakeUntil = Date.now() + WAKE_WINDOW_MS;
+    speechState.text = ''; speechState.textFinal = false;
+    updateMoodBadge();
+    return;
+  }
   speechState.text      = text;
   speechState.textFinal = !!isFinal;
+  if (WAKE_GATE && isFinal) _awakeUntil = Date.now() + WAKE_WINDOW_MS;  // stay awake while they talk
+
   updateMoodBadge();
   if (!isFinal) {
     // React live on interim text so the recommendation appears AS you speak,
@@ -405,6 +579,8 @@ function updateMoodBadge() {
   moodDot.classList.toggle('pulse', !!speechState.listening);
   if (!speechState.active) {
     moodText.textContent = 'Tap a mode to start';
+  } else if (isIdleGated()) {
+    moodText.textContent = 'Say “Hello”';
   } else if (speechState.text) {
     const t = speechState.text;
     moodText.textContent = (t.length > 60 ? t.slice(0, 57) + '…' : t) + '  ·  ' + m;
@@ -432,7 +608,9 @@ if (_isCapacitorRuntime) {
   const pttLabel = document.getElementById('ptt-label');
   voskRec = new VoskTopicRecognizer(
     (text, isFinal) => onSpeech(text, isFinal),
-    { onState: (st) => {
+    { // Boot straight into the cheap wake-word tier when the gate is on.
+      grammar: WAKE_GATE ? WAKE_GRAMMAR : null,
+      onState: (st) => {
         speechState.active    = st.listening;
         speechState.listening = st.listening;
         if (pttBtn) {
@@ -442,7 +620,7 @@ if (_isCapacitorRuntime) {
         if (pttLabel) {
           pttLabel.textContent =
             st.status === 'loading'   ? 'Loading speech…'  :
-            st.status === 'listening' ? 'Listening'        :
+            st.status === 'listening' ? (isIdleGated() ? 'Say “Hello”' : 'Listening') :
             st.status === 'error'     ? 'Speech offline'   :
                                         'Starting…';
         }
@@ -455,18 +633,76 @@ if (_isCapacitorRuntime) {
   // Don't start yet — startCapture() shares ONE camera+mic stream into the
   // recogniser (avoids the iOS double-getUserMedia conflict that blanked the
   // camera). The watchdog (and a setup tap) keep it alive once the stream is in.
-  const ensureOn = () => {
-    if (voskRec.supported && voskRec.externalStream && !voskRec.listening && !voskRec.starting) voskRec.start();
-  };
+  const canStart = () => voskRec.supported && (voskRec.externalStream || !FACE_TRACKING) && !voskRec.listening && !voskRec.starting;
+  const ensureOn = () => { if (canStart()) voskRec.start(); };
+  ensureOn();   // FACE_TRACKING off → start now (own mic); on → startCapture() shares the stream
   // iOS often needs ONE user gesture to unlock audio; any tap during setup both
   // resumes a suspended AudioContext and (re)starts the recogniser.
   const kick = () => {
     if (voskRec.audioContext && voskRec.audioContext.state === 'suspended') voskRec.audioContext.resume().catch(() => {});
+    ensureChimeCtx();   // unlock the wake chime on the same setup tap
     ensureOn();
   };
   document.addEventListener('touchend', kick, { passive: true });
   document.addEventListener('click', kick);
-  setInterval(ensureOn, 8000);   // watchdog
+
+  // Self-healing: on the 2 GB A10 iPad, WKWebView discards JIT-compiled JS at
+  // ~65% memory pressure — main-thread setInterval AND the audio ScriptProcessor
+  // stop together (the rAF render loop survives on the GPU process, which is why
+  // the avatar keeps moving while speech/popups freeze). healSpeech() detects the
+  // three ways the pipeline dies and restarts IN PLACE (never a page reload —
+  // reload resets the audio gesture-unlock and kills speech with nobody to tap):
+  //   1. mic track ended/muted (iOS audio-route change)  → voskRec.trackDead
+  //   2. ScriptProcessor stalled (no onaudioprocess > 7 s, memory throttle)
+  //   3. AudioContext suspended (iOS pauses it on visibility/route change)
+  function healSpeech() {
+    if (!voskRec || !voskRec.supported) return;
+    ensureOn();                              // (re)start if it isn't listening at all
+    if (!voskRec.listening || voskRec.starting) return;
+    // Two-tier mic: lapse back to the tiny wake-word grammar once the awake
+    // window expires. Riding the worker ping means the downgrade still happens
+    // when main-thread intervals are being throttled under memory pressure.
+    if (WAKE_GATE) {
+      const wantGrammar = isIdleGated() ? WAKE_GRAMMAR : null;
+      if (voskRec.grammar !== wantGrammar) {
+        voskRec.setGrammar(wantGrammar);
+        const lbl = document.getElementById('ptt-label');
+        if (lbl) lbl.textContent = wantGrammar ? 'Say “Hello”' : 'Listening';
+        updateMoodBadge();
+      }
+    }
+    if (voskRec.audioContext && voskRec.audioContext.state === 'suspended') {
+      voskRec.audioContext.resume().catch(() => {});
+    }
+    const stalled = performance.now() - (voskRec.lastAudioMs || 0) > 7000;
+    if (voskRec.trackDead || stalled) {
+      console.warn('[vosk] heal: restarting —', voskRec.trackDead ? 'mic track dead' : 'audio pipeline stalled');
+      if (!FACE_TRACKING) voskRec.externalStream = null;   // force a fresh getUserMedia
+      voskRec.stop();
+      setTimeout(() => voskRec.start(), 500);
+    }
+  }
+
+  // Main-thread watchdog — works while the main thread is alive, but is the FIRST
+  // thing throttled/killed under memory pressure (exactly when we need it). So it's
+  // only the backup.
+  setInterval(healSpeech, 5000);
+
+  // Web Worker watchdog (the real fix): a Worker runs on its own thread with its
+  // own timer that WKWebView does NOT throttle under memory pressure. It pings the
+  // main thread every 2.5 s; the message wakes the main thread (re-JITs the handler
+  // if it was dropped) and runs healSpeech — so even when the main-thread interval
+  // is dead, the pipeline still gets nudged back to life. Built from a Blob so it
+  // needs no separate bundled file / path (robust inside the Capacitor WKWebView).
+  try {
+    const workerSrc = 'var n=0;setInterval(function(){postMessage(++n);},2500);';
+    const blobUrl = URL.createObjectURL(new Blob([workerSrc], { type: 'application/javascript' }));
+    const watchdog = new Worker(blobUrl);
+    watchdog.onmessage = () => { try { healSpeech(); } catch (_) {} };
+    console.log('[vosk] worker watchdog armed (2.5s ping)');
+  } catch (e) {
+    console.warn('[vosk] worker watchdog unavailable, relying on main-thread interval:', e?.message || e);
+  }
 }
 
 /* ============================================================
@@ -520,6 +756,9 @@ ui.canvas.addEventListener('webglcontextlost', (e) => {
   const btn    = document.getElementById('settings-btn');
   const modal  = document.getElementById('settings-modal');
   const host   = document.getElementById('set-arduino-host');
+  const rly    = document.getElementById('set-relay-host');
+  const cam    = document.getElementById('set-camera');
+  const face   = document.getElementById('set-face');
   const feat   = document.getElementById('set-features');
   const lang   = document.getElementById('set-lang');
   const av     = document.getElementById('set-avatar-url');
@@ -529,6 +768,9 @@ ui.canvas.addEventListener('webglcontextlost', (e) => {
 
   const fillCurrent = () => {
     host.value = localStorage.getItem('arduinoHost') || '192.168.4.1';
+    rly.value  = localStorage.getItem('relayHost')   || '';
+    cam.value  = localStorage.getItem('camDevice')   || '';
+    face.value = localStorage.getItem('faceTracking') || '1';
     feat.value = localStorage.getItem('featuresDef') || 'both';
     lang.value = localStorage.getItem('speechLang')  || 'en-US';
     av.value   = localStorage.getItem('avatarUrl')   || '/3D_/ryu2.vrm';
@@ -568,6 +810,13 @@ ui.canvas.addEventListener('webglcontextlost', (e) => {
     const ip = host.value.trim();
     if (ip) localStorage.setItem('arduinoHost', ip);
     else    localStorage.removeItem('arduinoHost');
+    const rip = rly.value.trim();
+    if (rip) localStorage.setItem('relayHost', rip);
+    else     localStorage.removeItem('relayHost');
+    const cv = cam.value.trim();
+    if (cv) localStorage.setItem('camDevice', cv);
+    else    localStorage.removeItem('camDevice');
+    localStorage.setItem('faceTracking', face.value);
     localStorage.setItem('featuresDef', feat.value);
     localStorage.setItem('speechLang',  lang.value);
     if (av.value.trim()) localStorage.setItem('avatarUrl', av.value.trim());
@@ -622,31 +871,93 @@ let demo = null;
 let frames = 0, lastFpsT = performance.now();
 
 async function startCapture() {
+  // Lightweight path (iPad default): NO camera, NO MediaPipe. The avatar
+  // idle-animates and Vosk opens its own mic — far lighter for the week-long run.
+  if (!FACE_TRACKING) {
+    ui.video.style.display = 'none';
+    if (voskRec) voskRec.start();           // own audio getUserMedia
+    setStatus('ready', 'ok');
+    return true;
+  }
   setStatus('requesting camera…', 'warn');
+  let stream;
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      // Grab mic + camera in ONE call: video drives face-tracking, the audio
-      // track is handed to Vosk. Two separate getUserMedia calls fight on iOS
-      // and the camera goes black.
-      audio: _isCapacitorRuntime ? { echoCancellation: true, noiseSuppression: true, channelCount: 1 } : false,
-      video: {
-        width:  { ideal: _isCapacitorRuntime ? 320 : (LOWEND ? 480 : 640) },
-        height: { ideal: _isCapacitorRuntime ? 240 : (LOWEND ? 360 : 480) },
-        facingMode: 'user'
+    // Pick the camera: the Mac may have several (built-in FaceTime, external
+    // UVC webcam, iPhone Continuity). Settings → Camera / ?cam= matches a
+    // device-label substring; empty keeps the browser default.
+    const videoConstraints = {
+      width:  { ideal: _isCapacitorRuntime ? 320 : (LOWEND ? 480 : 640) },
+      height: { ideal: _isCapacitorRuntime ? 240 : (LOWEND ? 360 : 480) },
+      facingMode: 'user'
+    };
+    // Camera picking needs a throwaway permission-priming stream. On iOS a
+    // second getUserMedia is exactly the double-open that used to black the
+    // camera, so on Capacitor we only probe when a filter is explicitly set
+    // (e.g. a future USB-C iPad with an external UVC camera).
+    if (navigator.mediaDevices.enumerateDevices && (CAM_FILTER || !_isCapacitorRuntime)) {
+      try {
+        // Device labels are only exposed after a grant — prime with a throwaway stream.
+        const probe = await navigator.mediaDevices.getUserMedia({ video: true });
+        probe.getTracks().forEach((t) => t.stop());
+        const cams = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'videoinput');
+        console.log('[cam] available:', cams.map((c) => c.label || '(unnamed)').join(' | '));
+        // Priority: explicit filter (Settings/?cam=) → any EXTERNAL camera
+        // (auto: plugged-in USB/UVC wins over built-ins the moment it's
+        // present, no config needed — works on the Mac today and on USB-C
+        // iPads with iPadOS 17+ external-camera support) → system default.
+        // iPhone Continuity / Desk View are never auto-picked (they come and
+        // go with the phone); select them explicitly via the filter if wanted.
+        let hit = null;
+        if (CAM_FILTER) {
+          hit = cams.find((c) => c.label.toLowerCase().includes(CAM_FILTER.toLowerCase()));
+          if (!hit) console.warn(`[cam] no camera label matches "${CAM_FILTER}" — trying auto/external`);
+        }
+        if (!hit && cams.length > 1) {
+          hit = cams.find((c) => c.label && !/facetime|built-in|integrated|front|back|iphone|continuity|desk view/i.test(c.label));
+          if (hit) console.log('[cam] external camera detected — auto-selected');
+        }
+        if (hit) {
+          delete videoConstraints.facingMode;          // deviceId is authoritative
+          videoConstraints.deviceId = { exact: hit.deviceId };
+          console.log('[cam] using:', hit.label);
+        }
+      } catch (e) {
+        console.warn('[cam] device probe failed, using default:', e?.message || e);
       }
-    });
-    ui.video.srcObject = stream;
-    await ui.video.play();
-    // Share this stream's mic with the offline recogniser (continuous, hands-free).
-    if (voskRec) { voskRec.useStream(stream); voskRec.start(); }
+    }
+    // Mic + camera in ONE call (two getUserMedia calls fight on iOS → black cam).
+    const audioConstraints = _isCapacitorRuntime ? { echoCancellation: true, noiseSuppression: true, channelCount: 1 } : false;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints, video: videoConstraints });
+    } catch (e) {
+      if (!videoConstraints.deviceId) throw e;
+      // The chosen camera enumerates but won't open (unplugged UVC ghost,
+      // Continuity iPhone that walked away, device busy) — don't let a stale
+      // Settings value brick face tracking AND the shared-mic speech path.
+      console.warn('[cam] selected camera failed to open — falling back to default:', e?.message || e);
+      delete videoConstraints.deviceId;
+      videoConstraints.facingMode = 'user';
+      stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints, video: videoConstraints });
+    }
   } catch (e) {
     setStatus('camera blocked: ' + e.message, 'err');
     return false;
   }
+  ui.video.srcObject = stream;
+  try { await ui.video.play(); } catch (e) { console.warn('[cam] preview play blocked:', e?.message || e); }
+  if (voskRec) { voskRec.useStream(stream); voskRec.start(); }   // share the mic
   setStatus('loading MediaPipe…', 'warn');
-  faceCap = await new FaceCapture().init();
-  if (ui.tracker.value !== 'face') poseCap = await new PoseCapture().init();
-  setStatus('tracking', 'ok');
+  try {
+    faceCap = await new FaceCapture().init();
+    if (ui.tracker.value !== 'face') poseCap = await new PoseCapture().init();
+    setStatus('tracking', 'ok');
+  } catch (e) {
+    // MediaPipe failing (GPU pressure, missing asset) must not kill the app —
+    // speech is already wired to the shared stream; the avatar just idles.
+    faceCap = null;
+    console.warn('[face] MediaPipe init failed — idle avatar continues:', e?.message || e);
+    setStatus('face tracking unavailable — idle mode', 'warn');
+  }
   // Piggy-back the mic permission on the camera-allow gesture (iOS Safari
   // grants both prompts in sequence; user only sees a single flow). On
   // iPad `audio` is null because Web Speech takes the mic exclusively, so
@@ -701,24 +1012,48 @@ ui.fullscreen.addEventListener('click', () => {
 });
 ui.reload.addEventListener('click', () => location.reload());
 
-/* ---------- Relay client ---------- */
+/* ---------- Relay client ----------
+ * Mac (external webcam + MediaPipe) → ws://<Mac>:8787 → iPad avatar mirrors
+ * the visitor. The iPad's page host is capacitor://localhost, so the Mac's IP
+ * must come from Settings → "Mac relay IP" (or ?relay=). Frames are accepted
+ * in ANY mode as long as this device isn't face-tracking locally; when no
+ * frames arrive for 1.5 s the avatar falls back to its idle animation, so the
+ * installation keeps breathing even with the Mac switched off. */
+let _lastRelayFrameMs = -Infinity;
+// Plain ws:// to localhost even from https pages (mixed-content exempt);
+// the relay server has no TLS, so wss only makes sense for a remote host.
+const _relayProto = (location.protocol === 'https:' && !/^(localhost|127\.)/.test(RELAY_HOST)) ? 'wss' : 'ws';
 const relay = new RelayClient(MODE, {
+  url: RELAY_HOST ? `${_relayProto}://${RELAY_HOST}:8787` : undefined,
   onFrame: (frame) => {
-    if (MODE !== 'display') return;
-    const tNow = performance.now();
-    ui.latency.textContent = Math.round(tNow - frame.t);
-    if (frame.b) avatarScene.applyBlendshapes(frame.b);
+    if (MODE === 'capture' && faceCap && ui.video.readyState >= 2) return;  // local camera wins
+    _lastRelayFrameMs = performance.now();
+    ui.latency.textContent = Math.round(performance.now() - frame.t);
+    if (frame.b) avatarScene.applyBlendshapes(overlayMood(frame.b));
     if (frame.m) avatarScene.applyHeadTransform(new Float32Array(frame.m));
     if (frame.p) avatarScene.applyPose(frame.p);
   },
-  onStatus: (s) => { /* console.log(s); */ }
+  onStatus: (s) => { console.log('[relay]', s); }
 });
-relay.connect();
+// On the iPad, "localhost" is the WKWebView itself — without a configured Mac
+// relay IP there is nothing to connect to, and the 1.5 s reconnect loop would
+// spin (and spam the console) for the whole week-long run. Browser dev keeps
+// the default same-host relay for the Mac-capture mirror workflow.
+if (!_isCapacitorRuntime || RELAY_HOST) relay.connect();
+else console.log('[relay] skipped — no Mac relay IP configured (Settings → Mac relay IP)');
 
-/* ---------- Capture mode boot ---------- */
+/* ---------- Capture mode boot ----------
+ * NON-BLOCKING: boot must never gate the render loop. A pending iOS camera
+ * permission dialog (or a slow MediaPipe init) used to stall this top-level
+ * await — loop() never ran and the whole screen stayed black. The avatar now
+ * idle-animates immediately; face tracking takes over whenever it's ready. */
 if (MODE === 'capture') {
-  const ok = await startCapture();
-  if (!ok) console.warn('Capture not started; renderer still alive for testing.');
+  startCapture()
+    .then((ok) => { if (!ok) console.warn('Capture not started; idle avatar continues.'); })
+    .catch((e) => {
+      console.warn('[capture] failed — idle avatar continues:', e?.message || e);
+      setStatus('camera unavailable — idle mode', 'warn');
+    });
 }
 
 /* ---------- Demo mode boot (no webcam, procedural animation) ---------- */
@@ -738,11 +1073,13 @@ function loop() {
   lastLoopT = now;
 
   // Decide which input source drives the avatar this frame.
-  //   * Mirror mode  → camera blendshapes only
-  //   * Listen mode  → idle procedural breathing/blink only (camera ignored)
-  //   * Both         → camera blendshapes + idle as backup if camera not ready
+  //   * local camera tracking a face     → its blendshapes win
+  //   * fresh frames from the relay      → the remote Mac's camera drives us
+  //     (applied in relay.onFrame; we just stay out of the way here)
+  //   * neither                          → procedural idle breathing/blink
   const useCamera = isMirror() && MODE === 'capture' && faceCap && ui.video.readyState >= 2;
-  const useIdle   = !useCamera && (MODE === 'demo' || isListen() || (MODE === 'capture' && !useCamera));
+  const relayLive = !useCamera && (now - _lastRelayFrameMs < 1500);
+  const useIdle   = !useCamera && !relayLive;
 
   if (useCamera) {
     const { blendshapes, transform } = faceCap.detect(ui.video, now);
@@ -768,7 +1105,9 @@ function loop() {
     const overlaid = overlayMood(smoothed);
     avatarScene.applyBlendshapes(overlaid);
     avatarScene.applyHeadTransform(transform);
-    relay.sendFrame(smoothed, transform, null);
+    // NOTE: idle frames are NOT sent to the relay — every device can generate
+    // its own idle locally, and broadcasting them would fight the Mac's real
+    // camera frames on the receiving iPad.
   }
 
   // Pull one mic sample per frame so the dashboard's dB bar updates smoothly.

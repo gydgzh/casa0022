@@ -8,7 +8,10 @@
 
 import { WebSocketServer } from 'ws';
 
-const PORT = process.env.PORT || 8787;
+// RELAY_PORT, not PORT: dev harnesses (e.g. preview runners) inject a generic
+// PORT for the web server — inheriting it here made the relay steal vite's
+// port and answer page requests with "426 Upgrade Required".
+const PORT = process.env.RELAY_PORT || 8787;
 const wss = new WebSocketServer({ port: PORT });
 
 console.log(`[relay] listening on ws://0.0.0.0:${PORT}`);

@@ -30,9 +30,12 @@ const TOPIC_GRAMMAR = JSON.stringify([
 const MODEL_URL = 'models/vosk-model-small-en-us-0.15.tar.gz';
 
 export class VoskTopicRecognizer {
-  constructor(onText, { onState = null } = {}) {
+  constructor(onText, { onState = null, grammar = null } = {}) {
     this.onText  = onText;     // (text, isFinal) => void
     this.onState = onState;    // ({status, supported, listening, error}) => void
+    this.grammar = grammar;    // JSON-string word list → tiny closed-grammar decode
+                               // (wake-word spotting); null → full open vocabulary.
+                               // Survives watchdog restarts (start() re-reads it).
     this.supported = true;
     this.model = null;
     this.recognizer = null;
@@ -43,6 +46,8 @@ export class VoskTopicRecognizer {
     this.externalStream = null;  // shared camera+mic stream (avoids 2nd getUserMedia on iOS)
     this._ownStream = false;
     this.muted = false;          // true while the librarian's own TTS is speaking
+    this.lastAudioMs = 0;        // last time onaudioprocess fired (watchdog liveness)
+    this.trackDead = false;      // mic track ended/muted (iOS route change) — needs re-acquire
     this._onVis = null;
   }
 
@@ -73,6 +78,31 @@ export class VoskTopicRecognizer {
     }
   }
 
+  /** (Re)build the Kaldi recogniser against the live AudioContext.
+   *  With a grammar: a tiny closed-word-list decode — near-zero CPU/RAM on the
+   *  A10 while idle, only able to hear the wake word. Without: full open
+   *  vocabulary (pass the ACTUAL rate; iOS gives 48000, Vosk resamples). */
+  _makeRecognizer() {
+    if (this.recognizer) { try { this.recognizer.remove?.(); } catch (_) {} }
+    this.recognizer = this.grammar
+      ? new this.model.KaldiRecognizer(this.audioContext.sampleRate, this.grammar)
+      : new this.model.KaldiRecognizer(this.audioContext.sampleRate);
+    this.recognizer.on('result',        (m) => { const t = (m.result?.text    || '').trim(); if (t) this.onText(t, true);  });
+    this.recognizer.on('partialresult', (m) => { const t = (m.result?.partial || '').trim(); if (t) this.onText(t, false); });
+  }
+
+  /** Hot-swap between wake-word grammar and open vocabulary WITHOUT touching
+   *  the mic/audio pipeline (onaudioprocess reads this.recognizer per event,
+   *  so swapping the instance between events is safe). */
+  setGrammar(grammar) {
+    if (this.grammar === grammar) return;
+    this.grammar = grammar;
+    if (this.listening && this.model && this.audioContext) {
+      this._makeRecognizer();
+      console.log('[vosk] recogniser →', grammar ? 'wake-word grammar (idle)' : 'open vocabulary (awake)');
+    }
+  }
+
   /** Start continuous listening. First call may be slow (loads the model). */
   async start() {
     if (this.listening || this.starting) return;
@@ -94,21 +124,35 @@ export class VoskTopicRecognizer {
         this._ownStream = true;
       }
 
-      // Open vocabulary (NO grammar): transcribe natural speech so "Last heard"
-      // shows the real words and we keyword-match topics from them — smarter and
-      // no more "[unk]". (Pass the ACTUAL rate; iOS gives 48000, Vosk resamples.)
-      this.recognizer = new this.model.KaldiRecognizer(this.audioContext.sampleRate);
-      this.recognizer.on('result',        (m) => { const t = (m.result?.text    || '').trim(); if (t) this.onText(t, true);  });
-      this.recognizer.on('partialresult', (m) => { const t = (m.result?.partial || '').trim(); if (t) this.onText(t, false); });
+      // Mic-track liveness: on iOS an audio-route change (Bluetooth/HDMI/dock
+      // connect-disconnect) or memory pressure can silently 'ended' or 'mute'
+      // the track. onaudioprocess then keeps firing on a DEAD track, so the
+      // lastAudioMs liveness check never trips and the recogniser hears nothing
+      // forever. Flag trackDead → the watchdog (healSpeech) re-acquires the mic
+      // with a fresh getUserMedia. A transient mute that self-recovers fires
+      // 'unmute' and clears the flag, so we don't restart needlessly.
+      this.trackDead = false;
+      const micTrack = this.stream.getAudioTracks()[0];
+      if (micTrack) {
+        micTrack.onended  = () => { console.warn('[vosk] mic track ended');  this.trackDead = true;  };
+        micTrack.onmute   = () => { console.warn('[vosk] mic track muted');  this.trackDead = true;  };
+        micTrack.onunmute = () => { console.log ('[vosk] mic track unmuted'); this.trackDead = false; };
+      }
+
+      this._makeRecognizer();
 
       this.source = this.audioContext.createMediaStreamSource(this.stream);
       this.node   = this.audioContext.createScriptProcessor(2048, 1, 1);  // not AudioWorklet (WKWebView bug); smaller = lower latency
       // Lightweight VAD: only run the (expensive) decoder while there's actual
       // voice, plus a short tail so Vosk can finalise. During the mostly-silent
       // week-long run this keeps the A10 cool and the render loop smooth.
-      const VAD_RMS = 0.012, VAD_TAIL_MS = 800;   // shorter tail => snappier final result
+      // Sensitivity: 0.006 lets far/quiet exhibition speech through (0.012
+      // gated it out — wake word felt deaf); 1000 ms tail gives Vosk enough
+      // context to finalise short phrases like "hello librarian".
+      const VAD_RMS = 0.006, VAD_TAIL_MS = 1000;
       let lastVoice = 0;
       this.node.onaudioprocess = (e) => {
+        this.lastAudioMs = (performance && performance.now) ? performance.now() : Date.now();
         if (this.muted) return;   // ignore mic while the librarian is talking (no self-hearing)
         const buf = e.inputBuffer.getChannelData(0);
         let s = 0; for (let i = 0; i < buf.length; i++) s += buf[i] * buf[i];
@@ -129,6 +173,7 @@ export class VoskTopicRecognizer {
       };
       document.addEventListener('visibilitychange', this._onVis);
 
+      this.lastAudioMs = (performance && performance.now) ? performance.now() : Date.now();
       this.listening = true;
       this._state('listening');
     } catch (e) {

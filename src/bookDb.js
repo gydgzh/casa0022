@@ -258,11 +258,17 @@ export function recommendBookFromSpeech(text) {
  * dashboard — detection works before enrolment.
  * ============================================================ */
 export const BOOK_TAGS = {
-  // Demo sticker (Feiju ISO 14443-4). The HW-126 RC522 can't decode this card,
-  // so the Arduino detects it by RF field-loading and reports this fixed UID.
-  '5357E918950001': 'Image of the City',
-  // '04A1B2C3':     'A Brief History of Time',
-  // '04D5E6F708':   'The Library at Night',
+  // THE two exhibition books (final set, UIDs read live off the PN532 on
+  // 2026-07-13). Each book physically carries TWO tags — a 7-byte Feiju
+  // sticker AND a 4-byte Mifare card — and the PN532 alternates between
+  // them while the book sits on the reader, so BOTH UIDs map to the same
+  // title (the popup debounces on the resolved title, not the raw UID).
+  // Book 1 → film match: Blade Runner 2049
+  '5341E918950001': 'Image of the City',
+  '7BA21107':       'Image of the City',
+  // Book 2 → film match: The Name of the Rose
+  '5358E918950001': 'The Library at Night',
+  '69B91307':       'The Library at Night',
 };
 
 export function bookByUid(uid) {

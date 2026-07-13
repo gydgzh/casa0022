@@ -57,6 +57,8 @@
 #include <Adafruit_BME280.h>
 #include <Adafruit_BMP280.h>
 #include <MFRC522.h>
+#include <Adafruit_PN532.h>      // NFC Module V3 (PN532) — actually READS UIDs,
+                                 // incl. the Feiju ISO14443-4 card the RC522 clone couldn't
 #include "arduino_secrets.h"
 //   #define WIFI_SSID    "your-wifi"
 //   #define WIFI_PASS    "your-password"
@@ -79,7 +81,12 @@ static const char* TOF_BOOK_UID = "5357E918950001";  // demo sticker UID (phone 
 // the RF field, so REQA stops timing out. We don't read the UID — we just
 // sense "a tag is in the field" (REQA != TIMEOUT), debounce over 16 probes,
 // and light up book_uid for the demo. Overrides the RFID/ToF paths.
-#define FIELD_BOOK     1         // 1 = detect a book by RF field loading
+// 0 (exhibition): detection now uses the ToF fallback below — ANY object
+// (the demo sticker, whatever its RF type — even 125 kHz ID stickers the
+// 13.56 MHz RC522 physically can't sense) placed within TOF_BOOK_NEAR_MM
+// fires the book popup. Immune to the RC522 clone's flaky SPI wiring too.
+// Set back to 1 to detect via RF field loading (needs RC522 OK + IC tag).
+#define FIELD_BOOK     0
 #define FIELD_DEBUG    1         // 1 = print rolling hit count (tuning)
 #define FIELD_PERIOD   100       // ms between field probes
 #define FIELD_ON_HITS  12        // >= this many of last 16 probes saw a tag -> book ON
@@ -91,6 +98,11 @@ const int HTTP_PORT = 80;
 // I²C is fixed: SDA = 11, SCL = 12.  SPI is fixed: MOSI=8, SCK=9, MISO=10.
 const int PIN_RFID_SS  = 5;      // RC522 SDA(SS)
 const int PIN_RFID_RST = 4;      // RC522 RST  (D6 avoided: LED_BUILTIN)
+// PN532 "NFC Module V3" — I²C mode (DIP: SEL0=ON, SEL1=OFF). Shares the
+// existing I²C rails (SDA=11, SCL=12) with the ToF + BME280; PN532 sits at
+// I²C address 0x24, no clash. IRQ tells us when a card answer is ready.
+const int PIN_NFC_IRQ  = 7;      // PN532 IRQ
+const int PIN_NFC_RST  = 4;      // PN532 RSTPDN (reuses the old RC522 RST wire)
 
 // ── Behaviour constants ────────────────────────────────────────────────
 const uint16_t      PRESENCE_MM     = 1000;  // closer than this = reader present
@@ -104,6 +116,10 @@ const unsigned long RFID_PERIOD     = 300;   // ms between RFID polls
 WiFiServer server(HTTP_PORT);
 unsigned long       lastHttpServed = 0;       // millis() of the last response sent (seeded at boot)
 const unsigned long HTTP_WEDGE_MS  = 60000;   // no serve this long while polled => NINA wedge
+// ── Network self-heal (unattended exhibition) ──────────────────────────
+bool                everServed     = false;   // an iPad has polled at least once since boot
+const unsigned long NET_CHECK_MS   = 5000;    // AP-status poll cadence
+const unsigned long SERVE_DEAD_MS  = 180000;  // deployed + nothing served for 3 min => reboot
 
 VL53L0X         tof;
 Adafruit_BME280 bme;
@@ -113,6 +129,8 @@ MFRC522         rfid(PIN_RFID_SS, PIN_RFID_RST);
 bool   okTof  = false;
 bool   okEnv  = false;            // BME280 or BMP280 found
 bool   okRfid = false;
+bool   okNfc  = false;           // PN532 present → REAL UID reads (preferred)
+Adafruit_PN532 nfc(PIN_NFC_IRQ, PIN_NFC_RST);   // I²C constructor (default Wire)
 bool   envIsBme = false;          // true = BME280 (has humidity)
 
 int           distanceMm   = -1;  // -1 = no valid reading
@@ -225,6 +243,46 @@ void initRfid() {
   }
 }
 
+void initNfc() {
+  nfc.begin();
+  uint32_t v = nfc.getFirmwareVersion();
+  if (v) {
+    okNfc = true;
+    nfc.SAMConfig();                       // normal mode, one target at a time
+    Serial.print("[nfc]  PN532 OK fw=");
+    Serial.print((v >> 16) & 0xFF); Serial.print('.'); Serial.println((v >> 8) & 0xFF);
+  } else {
+    Serial.println("[nfc]  PN532 NOT FOUND — book detection falls back to ToF");
+  }
+}
+
+// Real UID reading via the PN532 — reads ISO14443A tags including the Feiju
+// ISO 14443-4 CPU card (UID 5357E918950001) the RC522 clone never could, and
+// any 13.56 MHz IC sticker. (125 kHz "ID" stickers are invisible to ALL NFC
+// readers — those still need the ToF fallback.) A tag in range latches
+// book_uid with its REAL hex UID; gone for BOOK_HOLD → cleared.
+void pollBookNfc() {
+  static unsigned long tN2 = 0, lastSeen = 0;
+  if (millis() - tN2 < RFID_PERIOD) return;
+  tN2 = millis();
+  uint8_t uid[7]; uint8_t len = 0;
+  // 60 ms timeout keeps loop()/HTTP snappy; polled ~3×/s that's plenty.
+  bool found = nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &len, 60);
+  if (found && len) {
+    lastSeen = millis();
+    String u; u.reserve(len * 2);
+    for (uint8_t i = 0; i < len; i++) { if (uid[i] < 0x10) u += '0'; u += String(uid[i], HEX); }
+    u.toUpperCase();
+    if (!bookPresent || u != bookUid) {
+      bookUid = u; bookPresent = true;
+      Serial.print("[nfc]  book ON uid="); Serial.println(bookUid);
+    }
+  } else if (bookPresent && millis() - lastSeen > BOOK_HOLD) {
+    bookPresent = false; bookUid = "";
+    Serial.println("[nfc]  book OFF");
+  }
+}
+
 // ── Sensor polling (non-blocking, called from loop) ────────────────────
 void pollTof() {
   if (!okTof || millis() - tTof < TOF_PERIOD) return;
@@ -305,17 +363,38 @@ void pollRfid() {
 // RC522 cannot read the tag. An object closer than TOF_BOOK_NEAR_MM latches the
 // demo UID into book_uid (held BOOK_HOLD ms after it leaves), so the iPad app's
 // existing book pipeline lights up exactly as if the tag had been read.
+// v2: BASELINE-DELTA detection. The fixed TOF_BOOK_NEAR_MM threshold sat
+// right on the fixture's empty reading (~95-115 mm), so sensor noise flapped
+// the popup ON/OFF non-stop. Now the firmware LEARNS the empty-scene
+// distance and fires only when something sits STEADILY (~1.2 s) at least
+// BOOK_DELTA_MM closer than that baseline; it clears only after ~2 s back at
+// baseline. Works at any fixture geometry, including "empty = out of range".
+const int BOOK_DELTA_MM  = 20;   // object must come >= this much closer than empty
+const int BOOK_ON_POLLS  = 4;    // ~1.2 s steady before ON  (RFID_PERIOD = 300 ms)
+const int BOOK_OFF_POLLS = 7;    // ~2.1 s at baseline before OFF
 void pollBookFallback() {
   if (millis() - tRfid < RFID_PERIOD) return;
   tRfid = millis();
-  static unsigned long tofSeen = 0;
-  bool nearObj = (okTof && distanceMm >= 0 && distanceMm < TOF_BOOK_NEAR_MM);
-  if (nearObj) tofSeen = millis();
-  bool on = (tofSeen != 0) && (millis() - tofSeen < BOOK_HOLD);
-  if (on && !bookPresent) {
-    bookUid = TOF_BOOK_UID; bookPresent = true;
-    Serial.print("[book] ON via ToF, uid="); Serial.println(bookUid);
-  } else if (!on && bookPresent) {
+  static float baseMm = -1;
+  static int onN = 0, offN = 0;
+  // -1 (no reading: empty long range, or a lens pressed flat) counts as FAR —
+  // hence the placement rule: the card sits 3-8 cm IN FRONT of the sensor,
+  // never flat on the lens.
+  float sceneMm = (okTof && distanceMm >= 0) ? (float)distanceMm : 1500.0f;
+  if (baseMm < 0) baseMm = sceneMm;                    // first poll seeds baseline
+  bool nearer = sceneMm < baseMm - BOOK_DELTA_MM;
+  if (nearer) { onN++; offN = 0; }
+  else {
+    offN++; onN = 0;
+    // Track slow scene drift (lighting/temperature) only while no book latched.
+    if (!bookPresent) baseMm = baseMm * 0.95f + sceneMm * 0.05f;
+  }
+  if (!bookPresent && onN >= BOOK_ON_POLLS) {
+    bookPresent = true; bookUid = TOF_BOOK_UID;
+    Serial.print("[book] ON via ToF (dist="); Serial.print(distanceMm);
+    Serial.print("mm base=");                 Serial.print((int)baseMm);
+    Serial.println("mm)");
+  } else if (bookPresent && offN >= BOOK_OFF_POLLS) {
     bookPresent = false; bookUid = "";
     Serial.println("[book] OFF via ToF");
   }
@@ -382,7 +461,7 @@ void writeJSON(WiFiClient& client) {
   client.print(F(",\"motion\":"));        client.print(presence ? 1 : 0); // compat
   client.print(F(",\"sensors\":{\"tof\":")); client.print(okTof ? 1 : 0);
   client.print(F(",\"env\":"));           client.print(okEnv ? 1 : 0);
-  client.print(F(",\"rfid\":"));          client.print(okRfid ? 1 : 0);
+  client.print(F(",\"rfid\":"));          client.print((okRfid || okNfc) ? 1 : 0);
   client.print(F(",\"env_chip\":\""));
   client.print(okEnv ? (envIsBme ? F("BME280") : F("BMP280")) : F("none"));
   client.print(F("\"}"));
@@ -410,10 +489,14 @@ void setup() {
   Wire.begin();
   initTof();
   initEnv();
-  initRfid();
+#if FIELD_BOOK
+  initRfid();          // RC522 only matters for the legacy field-loading path
+#endif
+  initNfc();           // PN532 (NFC Module V3): auto-detected; absent = ToF fallback
   Serial.print("[boot] sensors: tof=");  Serial.print(okTof);
   Serial.print(" env=");                 Serial.print(okEnv);
-  Serial.print(" rfid=");                Serial.println(okRfid);
+  Serial.print(" rfid=");                Serial.print(okRfid);
+  Serial.print(" nfc=");                 Serial.println(okNfc);
 
 #if USE_AP
   startWiFiAP();
@@ -431,18 +514,54 @@ void setup() {
   blink(3);
 }
 
+// ── Network self-heal (unattended exhibition) ──────────────────────────
+// The NINA occasionally drops the AP or wedges its TCP stack while the
+// sketch keeps running. Detect both and reboot clean. NVIC reset ONLY —
+// NEVER WiFi.end()+beginAP() here: that bricks the NINA until a physical
+// power cycle (learned the hard way, see handoff notes).
+//  * AP status not LISTENING/CONNECTED for 3 checks (~15 s)      → reset
+//  * an iPad had been polling, then nothing served for 3 minutes → reset
+//    (gated on everServed so bench work without an iPad never reset-loops)
+void pollNetHealth() {
+  static unsigned long tN = 0;
+  static int bad = 0;
+  if (millis() - tN < NET_CHECK_MS) return;
+  tN = millis();
+  uint8_t st = WiFi.status();
+  if (st == WL_AP_LISTENING || st == WL_AP_CONNECTED) {
+    bad = 0;
+  } else {
+    bad++;
+    Serial.print("[net] AP status="); Serial.print(st);
+    Serial.print(" bad=");            Serial.println(bad);
+    if (bad >= 3) {
+      Serial.println("[net] AP gone — rebooting clean");
+      delay(200);
+      NVIC_SystemReset();
+    }
+  }
+  if (everServed && millis() - lastHttpServed > SERVE_DEAD_MS) {
+    Serial.println("[net] no HTTP served for 3 min (NINA wedge?) — rebooting clean");
+    delay(200);
+    NVIC_SystemReset();
+  }
+}
+
 void loop() {
   static unsigned long tHb = 0;
   bool hb = (millis() - tHb > 1000);
   if (hb) tHb = millis();
   pollTof();
   pollEnv();
+#if USE_AP
+  pollNetHealth();
+#endif
 #if FIELD_BOOK
   pollBookByField();
-#elif TOF_BOOK_FALLBACK
-  pollBookFallback();
 #else
-  pollRfid();
+  // PN532 present → real UID reads; otherwise ToF proximity fallback.
+  if (okNfc)      pollBookNfc();
+  else            pollBookFallback();
 #endif
   if (hb) {
     Serial.print("[hb] dist="); Serial.print(distanceMm);
@@ -518,6 +637,7 @@ void loop() {
   }
 
   lastHttpServed = millis();   // a client was served — server is healthy
+  everServed     = true;       // arms the 3-min serve-dead self-heal
   client.flush();
   delay(5);
   client.stop();

@@ -30,6 +30,9 @@ export class Dashboard {
     this.ctx2   = canvasEl.getContext('2d');
     this.audio  = ctx.audio || null;
     this.getSpeechState = ctx.getSpeechState || (() => null);
+    // Exhibition layout: recommendations render in their own right-side HTML
+    // panel (never over the avatar), so the dashboard can omit its copy.
+    this.hideSuggestions = !!ctx.hideSuggestions;
     this._fit   = this._fit.bind(this);
     window.addEventListener('resize', this._fit);
     this._fit();
@@ -225,27 +228,29 @@ export class Dashboard {
       }
     };
 
-    drawRec(
-      'Suggested book (from speech)',
-      sp.book,
-      '📖', 'by ',
-      'Speak a topic to get a book suggestion.',
-      'match:',
-    );
+    if (!this.hideSuggestions) {
+      drawRec(
+        'Suggested book (from speech)',
+        sp.book,
+        '📖', 'by ',
+        'Speak a topic to get a book suggestion.',
+        'match:',
+      );
 
-    // small divider
-    y += 8;
-    ctx.strokeStyle = 'rgba(255,255,255,0.05)';
-    ctx.beginPath(); ctx.moveTo(14, y); ctx.lineTo(w - 14, y); ctx.stroke();
-    y += 12;
+      // small divider
+      y += 8;
+      ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+      ctx.beginPath(); ctx.moveTo(14, y); ctx.lineTo(w - 14, y); ctx.stroke();
+      y += 12;
 
-    drawRec(
-      'Suggested film (from environment)',
-      sp.film,
-      '🎬', 'dir. ',
-      'Waiting for sensors…',
-      'ambient mood:',
-    );
+      drawRec(
+        'Suggested film (from environment)',
+        sp.film,
+        '🎬', 'dir. ',
+        'Waiting for sensors…',
+        'ambient mood:',
+      );
+    }
 
     // ---- Mood pill (bottom) ----
     const mood = sp.mood || 'neutral';

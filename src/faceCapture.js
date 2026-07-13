@@ -4,10 +4,11 @@
 
 import { FilesetResolver, FaceLandmarker } from '@mediapipe/tasks-vision';
 
-const WASM_BASE =
-  'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm';
-const MODEL_URL =
-  'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task';
+// Served from public/mediapipe/ (same-origin) so face tracking works with NO
+// internet — at the exhibition the capture Mac joins the offline
+// 'VirtualLibrarian' AP, where the old CDN URLs were unreachable.
+const WASM_BASE = 'mediapipe/wasm';
+const MODEL_URL = 'mediapipe/face_landmarker.task';
 
 export class FaceCapture {
   constructor() {

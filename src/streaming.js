@@ -11,9 +11,13 @@ export class RelayClient {
    */
   constructor(role, opts = {}) {
     this.role = role;
-    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+    // server/relay.js speaks PLAIN ws (no TLS). From an https page (vite
+    // basicSsl) wss:// would fail the handshake — but browsers exempt
+    // localhost from mixed-content blocking, so plain ws:// to the local
+    // relay is always the right call; only a remote https origin needs wss.
+    const secure = location.protocol === 'https:' && !/^(localhost|127\.)/.test(location.hostname);
     // Default: same host as the page, port 8787 (see server/relay.js).
-    this.url = opts.url || `${proto}://${location.hostname}:8787`;
+    this.url = opts.url || `${secure ? 'wss' : 'ws'}://${location.hostname}:8787`;
     this.onFrame = opts.onFrame ?? (() => {});
     this.onStatus = opts.onStatus ?? (() => {});
     this.ws = null;
