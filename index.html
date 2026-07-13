@@ -46,7 +46,7 @@
        position and touch calibration are untouched. Disable with ?flip=0. */
     body.mirror-flip #pyramid-canvas { transform: scaleY(-1); }
     body.mirror-flip #book-popup     { transform: scaleY(-1); }
-    body.mirror-flip #suggest-panel  { transform: scaleY(-1); }
+    body.mirror-flip #suggest-panel  { transform: scaleY(-1) scale(var(--sp-scale, 1)); }
     .panel {
       position: fixed;
       z-index: 10;
@@ -469,6 +469,10 @@
       border: 1px solid rgba(255, 255, 255, 0.08);
       border-radius: 10px;
       font: 12px -apple-system, BlinkMacSystemFont, sans-serif;
+      /* Calibratable (three-finger tap → drag / pinch, persisted): position is
+         set inline by the calibration script; scale rides this var so it
+         composes with the mirror-flip transform above. */
+      transform: scale(var(--sp-scale, 1));
     }
     body.sensors-on #suggest-panel { display: flex; }
     body.display-mode #suggest-panel { display: none; }
@@ -697,10 +701,12 @@
         'border-radius:6px;pointer-events:none;display:none;white-space:nowrap;';
       document.body.appendChild(ro);
       var calib = LS.getItem('pyrCalibrate') === '1', g = null;
+      var sp = document.getElementById('suggest-panel');
       function setCalib(on){
         calib = on; LS.setItem('pyrCalibrate', on ? '1' : '0');
         ro.style.display = on ? 'block' : 'none';
         canvas.style.outline = on ? '2px dashed rgba(123,224,201,.6)' : 'none';
+        if (sp) sp.style.outline = on ? '2px dashed rgba(245,177,105,.75)' : 'none';
         apply();
       }
       function dist(t){ return Math.hypot(t[0].clientX-t[1].clientX, t[0].clientY-t[1].clientY); }
@@ -719,6 +725,45 @@
         save(); apply(); e.preventDefault();
       }, { passive:false });
       canvas.addEventListener('touchend', function(){ g = null; }, { passive:false });
+
+      /* ── Recommendations panel: same calibration mode, its own gestures ──
+         The enclosure decides where the panel can sit, so it is adjustable
+         in place: THREE-finger tap (here or on the canvas) toggles calibrate,
+         then ONE-finger drag moves the panel and TWO-finger pinch scales it
+         (0.5–2.5×). Values persist in localStorage like the pyramid's. */
+      if (sp) {
+        var spScale = parseFloat(LS.getItem('spScale')); if (!isFinite(spScale)) spScale = 1;
+        var spLeft = num('spLeft'), spTop = num('spTop'), sg = null;
+        function spApply(){
+          root.style.setProperty('--sp-scale', spScale);
+          if (spLeft != null){ sp.style.left = spLeft + 'px'; sp.style.right = 'auto'; }
+          if (spTop  != null){ sp.style.top  = spTop  + 'px'; }
+        }
+        function spSave(){
+          LS.setItem('spScale', spScale);
+          if (spLeft != null) LS.setItem('spLeft', spLeft);
+          if (spTop  != null) LS.setItem('spTop',  spTop);
+        }
+        sp.addEventListener('touchstart', function(e){
+          if (e.touches.length === 3){ setCalib(!calib); e.preventDefault(); return; }
+          if (!calib) return;
+          // Adopt the CSS default position once (offsetLeft/Top ignore the
+          // scale/flip transforms, so this is the untransformed layout box).
+          if (spLeft == null){ spLeft = sp.offsetLeft; spTop = sp.offsetTop; }
+          if (e.touches.length === 1) sg = { m:1, x:e.touches[0].clientX, y:e.touches[0].clientY, l:spLeft, t:spTop };
+          else if (e.touches.length === 2) sg = { m:2, d:dist(e.touches), s:spScale };
+          e.preventDefault();
+        }, { passive:false });
+        sp.addEventListener('touchmove', function(e){
+          if (!calib || !sg) return;
+          if (sg.m === 1){ spLeft = sg.l + (e.touches[0].clientX - sg.x); spTop = sg.t + (e.touches[0].clientY - sg.y); }
+          else if (sg.m === 2 && e.touches.length >= 2){ spScale = Math.min(2.5, Math.max(0.5, sg.s * (dist(e.touches)/sg.d))); }
+          spSave(); spApply(); e.preventDefault();
+        }, { passive:false });
+        sp.addEventListener('touchend', function(){ sg = null; }, { passive:false });
+        spApply();
+      }
+
       window.addEventListener('resize', function(){ if (!applying && ro && ro.style.display === 'block') apply(); });
       setCalib(calib);
       apply();
