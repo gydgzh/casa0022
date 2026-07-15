@@ -602,6 +602,9 @@
         <button id="set-calibrate" type="button" style="width:100%;padding:12px;background:#1d1d1d;color:var(--accent);border:1px solid var(--accent);border-radius:8px;font-size:13px;font-weight:600;">
           ◧ 进入校准 — 单指拖动 · 双指缩放 · 再按一次退出
         </button>
+        <button id="set-layout-reset" type="button" style="width:100%;margin-top:8px;padding:12px;background:#1d1d1d;color:#f5b169;border:1px solid #f5b169;border-radius:8px;font-size:13px;font-weight:600;">
+          ↺ 复位布局 — 人物/推荐窗恢复默认位置大小（拖丢了用这个）
+        </button>
         <div class="actions">
           <button id="set-cancel">Cancel</button>
           <button id="set-save" style="background:var(--accent);color:#001a14;border:none;">Save &amp; reload</button>
@@ -768,7 +771,18 @@
         spApply();
       }
 
-      window.addEventListener('resize', function(){ if (!applying && ro && ro.style.display === 'block') apply(); });
+      // Re-apply on every real resize (rotation, split-view, late layout) —
+      // the `applying` flag stops the self-dispatched resize from recursing.
+      window.addEventListener('resize', function(){ if (!applying) apply(); });
+      // Zero-size guard: if the first apply() ran while the window reported
+      // 0×0 (mid-reload / hidden webview), --pyr-size sticks at 0px and the
+      // avatar square is invisible AND untouchable. Retry until real
+      // dimensions exist.
+      (function ensureSized(){
+        if (vmin() === 0) { setTimeout(ensureSized, 300); return; }
+        if (parseFloat(getComputedStyle(root).getPropertyValue('--pyr-size')) > 0) return;
+        apply();
+      })();
       // Settings → "进入校准" button路径: iPadOS's system three-finger edit
       // gesture often swallows the in-app three-finger tap, so the gear menu
       // needs a reliable way in (wired up in main.js).

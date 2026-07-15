@@ -787,6 +787,16 @@ ui.canvas.addEventListener('webglcontextlost', (e) => {
     try { window.__toggleCalib?.(); } catch (_) {}
   });
 
+  // "复位布局" — rescue hatch for a calibration gone wrong (square dragged
+  // off-screen / pinched tiny leaves nothing touchable to drag back: the
+  // gesture handlers live ON the canvas). Clears every layout key and
+  // reloads; remind the operator to tap once after (audio gesture unlock).
+  document.getElementById('set-layout-reset')?.addEventListener('click', () => {
+    ['pyrSize', 'pyrLeft', 'pyrTop', 'pyrCalibrate', 'spLeft', 'spTop', 'spScale']
+      .forEach((k) => localStorage.removeItem(k));
+    location.reload();
+  });
+
   // "Test Arduino" — one-shot GET /sensors against the IP in the field,
   // result shown inline so wiring problems surface before Save & reload.
   const testBtn = document.getElementById('set-test-arduino');
