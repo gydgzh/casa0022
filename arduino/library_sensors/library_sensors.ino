@@ -59,6 +59,11 @@
 #include <MFRC522.h>
 #include <Adafruit_PN532.h>      // NFC Module V3 (PN532) — actually READS UIDs,
                                  // incl. the Feiju ISO14443-4 card the RC522 clone couldn't
+#include <Adafruit_SleepyDog.h>  // SAMD hardware watchdog: the NINA occasionally
+                                 // wedges the SPI bridge and FREEZES loop() itself —
+                                 // the software self-heal (pollNetHealth) dies with it.
+                                 // The WDT runs in silicon, so a frozen loop stops
+                                 // feeding it and the chip hard-resets within 16 s.
 #include "arduino_secrets.h"
 //   #define WIFI_SSID    "your-wifi"
 //   #define WIFI_PASS    "your-password"
@@ -158,7 +163,8 @@ void startWiFiStation() {
   int tries = 0;
   while (WiFi.begin(WIFI_SSID, WIFI_PASS) != WL_CONNECTED) {
     Serial.print('.'); blink(1); delay(2000);
-    if (++tries > 20) { Serial.println("\n[wifi] gave up; halting"); while (1) blink(3, 200); }
+    Watchdog.reset();
+    if (++tries > 20) { Serial.println("\n[wifi] gave up; halting"); while (1) blink(3, 200); }  // WDT reboots us out of this halt
   }
   Serial.println();
   Serial.print("[wifi] OK ip=");   Serial.print(WiFi.localIP());
@@ -171,6 +177,7 @@ void startWiFiAP() {
   // failing, reboot clean rather than halt or hang. NINA is fresh after a
   // power-up, so the first try almost always succeeds.
   for (int tries = 0; tries < 8; tries++) {
+    Watchdog.reset();                      // each beginAP attempt stays well under 16 s
     if (WiFi.beginAP(AP_SSID, AP_PASS) == WL_AP_LISTENING) {
       Serial.print("[ap] OK; iPad joins '"); Serial.print(AP_SSID);
       Serial.print("', gateway "); Serial.println(WiFi.localIP());
@@ -486,6 +493,24 @@ void setup() {
   while (!Serial && millis() - s0 < 2000) {}
   Serial.println("\n[boot] library_sensors.ino v3 (VL53L0X + BME/BMP280 + RC522)");
 
+  // Why did we (re)start? RCAUSE distinguishes a normal power-up from a
+  // watchdog rescue or our own NVIC self-heals — lets the serial log count
+  // silent freezes across the unattended exhibition week.
+  uint8_t rc = PM->RCAUSE.reg;
+  Serial.print("[boot] reset cause:");
+  if (rc & PM_RCAUSE_POR)   Serial.print(" power-on");
+  if (rc & PM_RCAUSE_BOD12) Serial.print(" brownout-1.2V");
+  if (rc & PM_RCAUSE_BOD33) Serial.print(" brownout-3.3V");
+  if (rc & PM_RCAUSE_EXT)   Serial.print(" reset-pin");
+  if (rc & PM_RCAUSE_WDT)   Serial.print(" WATCHDOG-RESCUE");
+  if (rc & PM_RCAUSE_SYST)  Serial.print(" software");
+  Serial.println();
+
+  // Arm BEFORE the blocking init/AP calls so a boot-time NINA hang also gets
+  // rescued; every spot that can legitimately take a while feeds the dog.
+  int wdtMs = Watchdog.enable(16000);
+  Serial.print("[wdt]  hardware watchdog armed ("); Serial.print(wdtMs); Serial.println(" ms)");
+
   Wire.begin();
   initTof();
   initEnv();
@@ -497,6 +522,15 @@ void setup() {
   Serial.print(" env=");                 Serial.print(okEnv);
   Serial.print(" rfid=");                Serial.print(okRfid);
   Serial.print(" nfc=");                 Serial.println(okNfc);
+
+  // COLD-BOOT FIX: at power-on the NINA co-processor boots slower than the
+  // SAMD. Talking SPI to it before it's ready wedges the SpiDrv handshake
+  // PERMANENTLY (no AP, frozen loop) — and an MCU-only reset (WDT/NVIC)
+  // doesn't restart the NINA, so the wedge survives every rescue. Warm
+  // resets always worked because the NINA was already up. Waiting here
+  // lets the NINA finish booting before the first WiFi.* call.
+  Serial.println("[nina] waiting 3 s for the NINA to boot (cold-start race)");
+  for (int i = 0; i < 6; i++) { Watchdog.reset(); delay(500); }
 
 #if USE_AP
   startWiFiAP();
@@ -548,6 +582,7 @@ void pollNetHealth() {
 }
 
 void loop() {
+  Watchdog.reset();   // alive — a NINA-wedge freeze stops this and the WDT reboots us
   static unsigned long tHb = 0;
   bool hb = (millis() - tHb > 1000);
   if (hb) tHb = millis();

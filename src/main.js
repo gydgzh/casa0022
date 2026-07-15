@@ -779,6 +779,14 @@ ui.canvas.addEventListener('webglcontextlost', (e) => {
   btn.addEventListener('click', () => { fillCurrent(); modal.classList.add('open'); });
   cancel.addEventListener('click', () => modal.classList.remove('open'));
 
+  // "进入校准" — reliable alternative to the three-finger tap (which iPadOS's
+  // system edit gesture often intercepts). Closes the modal so the dashed
+  // outlines are immediately draggable; press the button again to exit.
+  document.getElementById('set-calibrate')?.addEventListener('click', () => {
+    modal.classList.remove('open');
+    try { window.__toggleCalib?.(); } catch (_) {}
+  });
+
   // "Test Arduino" — one-shot GET /sensors against the IP in the field,
   // result shown inline so wiring problems surface before Save & reload.
   const testBtn = document.getElementById('set-test-arduino');
