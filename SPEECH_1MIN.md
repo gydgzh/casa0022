@@ -1,6 +1,6 @@
 # 一分钟展示演讲稿（简单英语版）
 
-> 语速放慢，约 60 秒。**加粗**处稍作停顿。每段对应 PPT 一页（讲稿也写进了 PPT 的演讲者备注里）。
+> 语速放慢，约 70 秒。**加粗**处稍作停顿。每段对应 PPT 一页（讲稿也写进了 PPT 的演讲者备注里）。
 > 生词注音和中文对照在下方。
 
 ---
@@ -22,7 +22,10 @@ Second, she can **listen**. Say "Hello" to wake her up. Then say a topic, like "
 **(Slide 5 — She can FEEL)**
 Third, she can **feel the room**. My sensor box reads distance, temperature, and NFC tags inside books. Put a book on the desk — she knows it, and recommends a matching **film**.
 
-**(Slide 6 — Closing)**
+**(Slide 6 — Inside the box)**
+Inside the box: a **custom PCB** connects three sensors to an Arduino. The box makes its **own Wi-Fi**. The iPad asks it for data **every second**. No internet, no cloud — everything stays on the desk.
+
+**(Slide 7 — Closing)**
 The hardware, the firmware, and the app — all **self-made**. It runs alone for a whole week. Thank you!
 
 ---
@@ -34,7 +37,8 @@ The hardware, the firmware, and the app — all **self-made**. It runs alone for
 3. 她有三个技能。第一，她能**看**：摄像头用 AI 追踪我的脸。我笑，她也笑。全部实时。
 4. 第二，她能**听**：说 "Hello" 唤醒她，再说一个主题（比如 space）——她推荐一本书。全程离线。
 5. 第三，她能**感知环境**：传感器盒读取距离、温度、书里的 NFC 标签。把书放在桌上——她认识这本书，并推荐一部相配的电影。
-6. 硬件、固件、App 全部自制。它能独立运行一整周。谢谢！
+6. 盒子内部：一块**自制 PCB** 把三个传感器接到 Arduino 上。盒子自建 **Wi-Fi 热点**，iPad **每秒**向它要一次数据。没有互联网、没有云——一切都在这张桌子上。
+7. 硬件、固件、App 全部自制。它能独立运行一整周。谢谢！
 
 ---
 
@@ -48,6 +52,8 @@ The hardware, the firmware, and the app — all **self-made**. It runs alone for
 | sheet | **希特** | 板/片 |
 | degrees | 迪-**格瑞斯** | 度（角度） |
 | recommends | 瑞-肯-**曼兹** | 推荐 |
+| Arduino | 阿-**杜伊**-诺 | （开发板名） |
+| custom PCB | **卡斯**-顿 P-C-B | 自制电路板 |
 | firmware | **佛姆**-where | 固件 |
 
 ## 现场演示节奏（可选，边讲边演）
@@ -55,3 +61,4 @@ The hardware, the firmware, and the app — all **self-made**. It runs alone for
 - 讲到 Slide 3 → 对着 iPad 笑一下（头像跟着笑）
 - 讲到 Slide 4 → 说 "Hello"（叮叮声）→ 说 "space"（荐书出现）
 - 讲到 Slide 5 → 放一本书（叮—咚 + 弹窗）
+- 讲到 Slide 6 → 指一下传感器盒
