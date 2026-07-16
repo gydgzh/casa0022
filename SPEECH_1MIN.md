@@ -11,7 +11,7 @@
 Hello everyone! My name is Yidan. This is my project — the **Holographic Virtual Librarian**.
 
 **(Slide 2 — How it works)**
-An iPad lies flat on the desk. An acrylic pyramid stands on top. The screen reflects into the pyramid — so a 3D librarian **floats in the air**.
+An iPad lies flat on the desk. A clear acrylic sheet stands over it, at **45 degrees**. The screen reflects on the sheet — so a 3D librarian **floats in the air**. This old trick is called **"Pepper's Ghost"**.
 
 **(Slide 3 — She can SEE)**
 She has three skills. First, she can **see**. A camera tracks my face with AI. When I smile — **she smiles**. All in real time.
@@ -30,7 +30,7 @@ The hardware, the firmware, and the app — all **self-made**. It runs alone for
 ## 中文对照（帮助记忆，不用念）
 
 1. 大家好！我是依丹。这是我的项目——全息虚拟图书管理员。
-2. iPad 平放在桌上，亚克力金字塔立在上面。屏幕反射进金字塔——3D 图书管理员悬浮在空中。
+2. iPad 平放在桌上，一块透明亚克力板以 45° 立在上方。屏幕画面反射在板上——3D 图书管理员悬浮在空中。这个古老的技巧叫「胡椒幽灵」（Pepper's Ghost）。
 3. 她有三个技能。第一，她能**看**：摄像头用 AI 追踪我的脸。我笑，她也笑。全部实时。
 4. 第二，她能**听**：说 "Hello" 唤醒她，再说一个主题（比如 space）——她推荐一本书。全程离线。
 5. 第三，她能**感知环境**：传感器盒读取距离、温度、书里的 NFC 标签。把书放在桌上——她认识这本书，并推荐一部相配的电影。
@@ -45,7 +45,8 @@ The hardware, the firmware, and the app — all **self-made**. It runs alone for
 | Holographic | 后-罗-**格拉**-fik | 全息的 |
 | Librarian | 来-**布瑞**-瑞恩 | 图书管理员 |
 | acrylic | 阿-**克瑞**-lik | 亚克力 |
-| pyramid | **皮**-拉-mid | 金字塔 |
+| sheet | **希特** | 板/片 |
+| degrees | 迪-**格瑞斯** | 度（角度） |
 | recommends | 瑞-肯-**曼兹** | 推荐 |
 | firmware | **佛姆**-where | 固件 |
 
